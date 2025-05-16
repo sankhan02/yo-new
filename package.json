@@ -4,14 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bunx --bun vite",
-    "build": "bunx --bun run-p type-check \"build-only {@}\" --",
-    "preview": "bunx --bun vite preview",
-    "build-only": "bunx --bun vite build",
-    "type-check": "bunx --bun vue-tsc --build --force",
-    "lint": "bunx --bun eslint --ext .ts,.vue --ignore-path .gitignore .",
-    "lint:fix": "bunx --bun eslint --ext .ts,.vue --ignore-path .gitignore . --fix",
-    "format": "bunx --bun prettier --write \"src/**/*.{ts,vue,css,scss}\""
+    "dev": "bunx vite",
+    "build": "bunx run-p type-check \"build-only {@}\" --",
+    "preview": "bunx vite preview",
+    "build-only": "bunx vite build",
+    "type-check": "bunx vue-tsc --build --force",
+    "lint": "bunx eslint --ext .ts,.vue --ignore-path .gitignore .",
+    "lint:fix": "bunx eslint --ext .ts,.vue --ignore-path .gitignore . --fix",
+    "format": "bunx prettier --write \"src/**/*.{ts,vue,css,scss}\""
   },
   "dependencies": {
     "@reown/appkit": "^1.7.4",

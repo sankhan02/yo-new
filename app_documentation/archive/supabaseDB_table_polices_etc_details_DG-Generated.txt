@@ -1,0 +1,4494 @@
+-- we don't know how to generate root <with-no-name> (class Root) :(
+
+grant connect, create, temporary on database postgres to dashboard_user;
+
+create type referral_reward_status as enum ('claimed', 'pending');
+
+alter type referral_reward_status owner to postgres;
+
+create table streaks
+(
+    id             uuid                     default gen_random_uuid()            not null
+        primary key,
+    user_id        uuid                                                          not null
+        unique
+        references ??? ()
+        on delete cascade,
+    current_streak integer                  default 0                            not null,
+    longest_streak integer                  default 0                            not null,
+    last_played_at timestamp with time zone,
+    next_milestone integer                  default 5                            not null,
+    created_at     timestamp with time zone default timezone('utc'::text, now()) not null,
+    updated_at     timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+alter table streaks
+    owner to postgres;
+
+create policy "Users can insert their own streak data." on streaks
+    as permissive
+    for insert
+    with check (auth.uid() = user_id);
+
+create policy "Users can update their own streak data." on streaks
+    as permissive
+    for update
+    using (auth.uid() = user_id);
+
+create policy "Users can view their own streak data." on streaks
+    as permissive
+    for select
+    using (auth.uid() = user_id);
+
+grant delete, insert, references, select, trigger, truncate, update on streaks to anon;
+
+grant delete, insert, references, select, trigger, truncate, update on streaks to authenticated;
+
+grant delete, insert, references, select, trigger, truncate, update on streaks to service_role;
+
+create table upgrades
+(
+    id                 uuid    default gen_random_uuid() not null
+        primary key,
+    name               text                              not null,
+    description        text                              not null,
+    base_cost          integer                           not null,
+    cost_multiplier    numeric default 1.15              not null,
+    base_click_power   integer                           not null,
+    image_url          text,
+    category           text                              not null,
+    unlock_requirement integer default 0                 not null
+);
+
+alter table upgrades
+    owner to postgres;
+
+create policy "Allow all users to read upgrades" on upgrades
+    as permissive
+    for select
+    using true;
+
+grant delete, insert, references, select, trigger, truncate, update on upgrades to anon;
+
+grant delete, insert, references, select, trigger, truncate, update on upgrades to authenticated;
+
+grant delete, insert, references, select, trigger, truncate, update on upgrades to service_role;
+
+create table user_upgrades
+(
+    id           uuid                     default gen_random_uuid() not null
+        primary key,
+    user_id      uuid                                               not null
+        references ??? ()
+        on delete cascade,
+    upgrade_id   uuid                                               not null
+        references upgrades
+            on delete cascade,
+    quantity     integer                  default 1                 not null,
+    purchased_at timestamp with time zone default now(),
+    unique (user_id, upgrade_id)
+);
+
+alter table user_upgrades
+    owner to postgres;
+
+create index user_upgrades_user_id_idx
+    on user_upgrades (user_id);
+
+create policy "Users can insert their own upgrades" on user_upgrades
+    as permissive
+    for insert
+    with check (auth.uid() = user_id);
+
+create policy "Users can update their own upgrades" on user_upgrades
+    as permissive
+    for update
+    using (auth.uid() = user_id);
+
+create policy "Users can view their own upgrades" on user_upgrades
+    as permissive
+    for select
+    using (auth.uid() = user_id);
+
+grant delete, insert, references, select, trigger, truncate, update on user_upgrades to anon;
+
+grant delete, insert, references, select, trigger, truncate, update on user_upgrades to authenticated;
+
+grant delete, insert, references, select, trigger, truncate, update on user_upgrades to service_role;
+
+create table users
+(
+    id                       uuid                     default uuid_generate_v4() not null
+        primary key,
+    wallet_address           text                                                not null
+        unique,
+    clicks                   bigint                   default 0                  not null,
+    last_login               timestamp with time zone default now(),
+    created_at               timestamp with time zone default now(),
+    streak_days              integer                  default 0,
+    last_login_date          timestamp with time zone default now(),
+    streak_multiplier        double precision         default 1.0,
+    is_streak_active         boolean                  default false,
+    coin_rush_active         boolean                  default false,
+    coin_rush_end_time       timestamp with time zone,
+    auto_clicker_active      boolean                  default false,
+    auto_clicker_end_time    timestamp with time zone,
+    offline_rate             double precision         default 0.0,
+    last_offline_calculation timestamp with time zone default now(),
+    max_offline_duration     integer                  default 28800,
+    total_session_time       integer                  default 0,
+    last_session_start       timestamp with time zone default now(),
+    clicks_per_hour_average  double precision         default 0.0
+);
+
+alter table users
+    owner to postgres;
+
+create policy public_insert_users on users
+    as permissive
+    for insert
+    with check true;
+
+create policy users_select_own on users
+    as permissive
+    for select
+    using ((auth.jwt() IS NOT NULL) AND ((auth.uid() = id) OR (auth.uid() IS NULL)));
+
+create policy users_update_own on users
+    as permissive
+    for update
+    using ((auth.jwt() IS NOT NULL) AND (auth.uid() = id));
+
+grant delete, insert, references, select, trigger, truncate, update on users to anon;
+
+grant delete, insert, references, select, trigger, truncate, update on users to authenticated;
+
+grant delete, insert, references, select, trigger, truncate, update on users to service_role;
+
+create table wallet_fingerprints
+(
+    id                uuid                     default uuid_generate_v4() not null
+        primary key,
+    wallet_address    text                                                not null
+        unique,
+    first_seen        timestamp with time zone default now(),
+    risk_score        integer                  default 0,
+    transaction_count integer                  default 0,
+    created_at        timestamp with time zone default now()
+);
+
+alter table wallet_fingerprints
+    owner to postgres;
+
+create policy "Anyone can insert wallet fingerprints" on wallet_fingerprints
+    as permissive
+    for insert
+    with check true;
+
+create policy "Anyone can read wallet fingerprints" on wallet_fingerprints
+    as permissive
+    for select
+    using true;
+
+create policy "Users can view their own wallet fingerprint" on wallet_fingerprints
+    as permissive
+    for select
+    using (wallet_address IN (SELECT users_.wallet_address
+                              FROM users_
+                              WHERE (users_.id = auth.uid())));
+
+grant delete, insert, references, select, trigger, truncate, update on wallet_fingerprints to anon;
+
+grant delete, insert, references, select, trigger, truncate, update on wallet_fingerprints to authenticated;
+
+grant delete, insert, references, select, trigger, truncate, update on wallet_fingerprints to service_role;
+
+create table power_ups
+(
+    id             uuid                     default gen_random_uuid() not null
+        primary key,
+    user_id        uuid                                               not null
+        references ??? (),
+    type           text                                               not null,
+    level          integer                  default 1,
+    multiplier     numeric                  default 1.0,
+    duration       interval,
+    active_until   timestamp with time zone,
+    created_at     timestamp with time zone default now(),
+    updated_at     timestamp with time zone default now(),
+    name           text,
+    description    text,
+    cooldown       interval,
+    last_used      timestamp with time zone,
+    next_available timestamp with time zone,
+    is_active      boolean                  default false
+);
+
+alter table power_ups
+    owner to postgres;
+
+create policy "Users can view their own power ups" on power_ups
+    as permissive
+    for select
+    to authenticated
+    using (auth.uid() = user_id);
+
+create policy "Users can insert their own power ups" on power_ups
+    as permissive
+    for insert
+    to authenticated
+    with check (auth.uid() = user_id);
+
+create policy "Users can update their own power ups" on power_ups
+    as permissive
+    for update
+    to authenticated
+    using (auth.uid() = user_id)
+    with check (auth.uid() = user_id);
+
+create policy "Users can insert their own power-ups" on power_ups
+    as permissive
+    for insert
+    with check (auth.uid() = user_id);
+
+create policy "Users can create their own power-ups" on power_ups
+    as permissive
+    for insert
+    with check (auth.uid() = user_id);
+
+create policy "Users can view their own power-ups" on power_ups
+    as permissive
+    for select
+    using (auth.uid() = user_id);
+
+create policy "Users can update their own power-ups" on power_ups
+    as permissive
+    for update
+    using (auth.uid() = user_id);
+
+grant delete, insert, references, select, trigger, truncate, update on power_ups to anon;
+
+grant delete, insert, references, select, trigger, truncate, update on power_ups to authenticated;
+
+grant delete, insert, references, select, trigger, truncate, update on power_ups to service_role;
+
+create table offline_earnings
+(
+    id         uuid                     default gen_random_uuid() not null
+        primary key,
+    user_id    uuid                                               not null
+        references ??? (),
+    amount     bigint                                             not null,
+    created_at timestamp with time zone default now()             not null
+);
+
+alter table offline_earnings
+    owner to postgres;
+
+create policy "Users can insert their own offline earnings" on offline_earnings
+    as permissive
+    for insert
+    to authenticated
+    with check (auth.uid() = user_id);
+
+create policy "Users can update their own offline earnings" on offline_earnings
+    as permissive
+    for update
+    to authenticated
+    using (auth.uid() = user_id)
+    with check (auth.uid() = user_id);
+
+create policy "Users can view their own offline earnings" on offline_earnings
+    as permissive
+    for select
+    using (auth.uid() = user_id);
+
+create policy "Users can claim their offline earnings" on offline_earnings
+    as permissive
+    for insert
+    with check (auth.uid() = user_id);
+
+grant delete, insert, references, select, trigger, truncate, update on offline_earnings to anon;
+
+grant delete, insert, references, select, trigger, truncate, update on offline_earnings to authenticated;
+
+grant delete, insert, references, select, trigger, truncate, update on offline_earnings to service_role;
+
+create table referrals
+(
+    id          uuid                     default gen_random_uuid() not null
+        primary key,
+    referrer_id uuid                                               not null
+        references ??? (),
+    referred_id uuid                                               not null
+        unique
+        references ??? (),
+    code        text                                               not null,
+    status      text                     default 'pending'::text,
+    created_at  timestamp with time zone default now(),
+    updated_at  timestamp with time zone default now()
+);
+
+alter table referrals
+    owner to postgres;
+
+create policy "Users can view their referrals" on referrals
+    as permissive
+    for select
+    using ((auth.uid() = referrer_id) OR (auth.uid() = referred_id));
+
+create policy "Users can create referrals" on referrals
+    as permissive
+    for insert
+    with check (auth.uid() = referrer_id);
+
+create policy "Users can view their own referrals" on referrals
+    as permissive
+    for select
+    using ((referrer_id = auth.uid()) OR (referred_id = auth.uid()));
+
+create policy "Users can create their own referrals" on referrals
+    as permissive
+    for insert
+    with check (referrer_id = auth.uid());
+
+grant delete, insert, references, select, trigger, truncate, update on referrals to anon;
+
+grant delete, insert, references, select, trigger, truncate, update on referrals to authenticated;
+
+grant delete, insert, references, select, trigger, truncate, update on referrals to service_role;
+
+create table referral_rewards
+(
+    id          uuid                     default gen_random_uuid() not null
+        primary key,
+    user_id     uuid                                               not null
+        references ??? (),
+    reward_type text                                               not null,
+    amount      numeric                                            not null,
+    claimed     boolean                  default false,
+    created_at  timestamp with time zone default now(),
+    updated_at  timestamp with time zone default now()
+);
+
+alter table referral_rewards
+    owner to postgres;
+
+create policy "Users can view their rewards" on referral_rewards
+    as permissive
+    for select
+    using (auth.uid() = user_id);
+
+create policy "Users can claim their rewards" on referral_rewards
+    as permissive
+    for update
+    using (auth.uid() = user_id);
+
+create policy "Users can view their own rewards" on referral_rewards
+    as permissive
+    for select
+    using (user_id = auth.uid());
+
+create policy "Users can update their own unclaimed rewards" on referral_rewards
+    as permissive
+    for update
+    using ((user_id = auth.uid()) AND (NOT claimed))
+    with check ((user_id = auth.uid()) AND (NOT claimed));
+
+grant delete, insert, references, select, trigger, truncate, update on referral_rewards to anon;
+
+grant delete, insert, references, select, trigger, truncate, update on referral_rewards to authenticated;
+
+grant delete, insert, references, select, trigger, truncate, update on referral_rewards to service_role;
+
+create table prestige
+(
+    id               uuid                     default gen_random_uuid() not null
+        primary key,
+    user_id          uuid                                               not null
+        unique
+        references ??? (),
+    level            integer                  default 0,
+    multiplier       numeric                  default 1.0,
+    total_prestiges  integer                  default 0,
+    last_prestige_at timestamp with time zone,
+    created_at       timestamp with time zone default now(),
+    updated_at       timestamp with time zone default now()
+);
+
+alter table prestige
+    owner to postgres;
+
+create policy "Users can view their own prestige" on prestige
+    as permissive
+    for select
+    to authenticated
+    using (auth.uid() = user_id);
+
+create policy "Users can update their own prestige" on prestige
+    as permissive
+    for update
+    to authenticated
+    using (auth.uid() = user_id)
+    with check (auth.uid() = user_id);
+
+create policy "Users can insert their own prestige" on prestige
+    as permissive
+    for insert
+    to authenticated
+    with check (auth.uid() = user_id);
+
+create policy "Users can view their prestige" on prestige
+    as permissive
+    for select
+    using (auth.uid() = user_id);
+
+create policy "Users can update their prestige" on prestige
+    as permissive
+    for update
+    using (auth.uid() = user_id);
+
+grant delete, insert, references, select, trigger, truncate, update on prestige to anon;
+
+grant delete, insert, references, select, trigger, truncate, update on prestige to authenticated;
+
+grant delete, insert, references, select, trigger, truncate, update on prestige to service_role;
+
+create table clans
+(
+    id           uuid                     default gen_random_uuid() not null
+        primary key,
+    name         text                                               not null
+        unique,
+    description  text,
+    owner_id     uuid                                               not null
+        references ??? (),
+    created_at   timestamp with time zone default now()             not null,
+    updated_at   timestamp with time zone default now()             not null,
+    image_url    text,
+    member_count integer                  default 1                 not null,
+    total_clicks bigint                   default 0                 not null
+);
+
+alter table clans
+    owner to postgres;
+
+create table profiles
+(
+    id                    uuid                                   not null
+        primary key
+        references ??? ()
+        on delete cascade,
+    username              text
+        unique,
+    avatar_url            text,
+    created_at            timestamp with time zone default now() not null,
+    updated_at            timestamp with time zone default now() not null,
+    total_clicks          bigint                   default 0     not null,
+    current_clicks        bigint                   default 0     not null,
+    clicks_per_second     double precision         default 0     not null,
+    coins                 bigint                   default 0,
+    last_click_time       timestamp with time zone,
+    cooldown_end_time     timestamp with time zone,
+    prestige_level        integer                  default 0,
+    streak_multiplier     numeric(8, 2)            default 1.0,
+    prestige_multiplier   numeric(8, 2)            default 1.0,
+    offline_earnings_rate numeric(8, 2)            default 0.10,
+    last_session_earnings bigint                   default 0,
+    achievements_json     jsonb                    default '{}'::jsonb,
+    total_achievements    integer                  default 0,
+    achievement_points    integer                  default 0,
+    friend_count          integer                  default 0,
+    clan_id               uuid
+        references clans,
+    clan_role             text
+        constraint profiles_clan_role_check
+            check (clan_role = ANY (ARRAY ['member'::text, 'officer'::text, 'leader'::text])),
+    last_pvp_match        timestamp with time zone
+);
+
+alter table profiles
+    owner to postgres;
+
+create table clicks
+(
+    id         uuid                     default gen_random_uuid() not null
+        primary key,
+    user_id    uuid                                               not null
+        references profiles
+            on delete cascade,
+    amount     integer                                            not null,
+    timestamp  timestamp with time zone default now()             not null,
+    source     text                                               not null
+        constraint valid_source
+            check (source = ANY (ARRAY ['regular'::text, 'power-up'::text, 'auto'::text, 'offline'::text])),
+    multiplier numeric(8, 2)            default 1.0
+);
+
+alter table clicks
+    owner to postgres;
+
+create index clicks_user_id_idx
+    on clicks (user_id);
+
+create policy "Allow users to insert their own clicks" on clicks
+    as permissive
+    for insert
+    with check (auth.uid() = user_id);
+
+create policy "Allow users to view their own clicks" on clicks
+    as permissive
+    for select
+    using (auth.uid() = user_id);
+
+grant delete, insert, references, select, trigger, truncate, update on clicks to anon;
+
+grant delete, insert, references, select, trigger, truncate, update on clicks to authenticated;
+
+grant delete, insert, references, select, trigger, truncate, update on clicks to service_role;
+
+create index profiles_username_idx
+    on profiles (username);
+
+create policy "Allow insert for users creating their own profile" on profiles
+    as permissive
+    for insert
+    with check (auth.uid() = id);
+
+create policy "Allow public read access to profiles" on profiles
+    as permissive
+    for select
+    using true;
+
+create policy "Allow users to update their own profile" on profiles
+    as permissive
+    for update
+    using (auth.uid() = id);
+
+grant delete, insert, references, select, trigger, truncate, update on profiles to anon;
+
+grant delete, insert, references, select, trigger, truncate, update on profiles to authenticated;
+
+grant delete, insert, references, select, trigger, truncate, update on profiles to service_role;
+
+create policy "Clans are viewable by everyone" on clans
+    as permissive
+    for select
+    using true;
+
+create policy "Clan owners can update their clans" on clans
+    as permissive
+    for update
+    using (auth.uid() = owner_id);
+
+create policy "Clan owners can update their clan" on clans
+    as permissive
+    for update
+    using (auth.uid() = owner_id);
+
+create policy "Users can create clans" on clans
+    as permissive
+    for insert
+    with check (auth.uid() = owner_id);
+
+create policy "Anyone can view clans" on clans
+    as permissive
+    for select
+    using true;
+
+create policy "Only clan leader can update clan" on clans
+    as permissive
+    for update
+    using (owner_id = auth.uid())
+    with check (owner_id = auth.uid());
+
+grant delete, insert, references, select, trigger, truncate, update on clans to anon;
+
+grant delete, insert, references, select, trigger, truncate, update on clans to authenticated;
+
+grant delete, insert, references, select, trigger, truncate, update on clans to service_role;
+
+create table clan_members
+(
+    id                  uuid                     default gen_random_uuid() not null
+        primary key,
+    clan_id             uuid                                               not null
+        references clans,
+    user_id             uuid                                               not null
+        references ??? (),
+    joined_at           timestamp with time zone default now()             not null,
+    role                text                     default 'member'::text    not null,
+    contribution_clicks bigint                   default 0                 not null,
+    unique (clan_id, user_id)
+);
+
+alter table clan_members
+    owner to postgres;
+
+create policy "Clan members are viewable by everyone" on clan_members
+    as permissive
+    for select
+    using true;
+
+create policy "Users can join clans" on clan_members
+    as permissive
+    for insert
+    with check (auth.uid() = user_id);
+
+create policy "Users can update their own membership" on clan_members
+    as permissive
+    for update
+    using (auth.uid() = user_id);
+
+create policy "Users can leave clans" on clan_members
+    as permissive
+    for delete
+    using (auth.uid() = user_id);
+
+create policy "Members can view their clan members" on clan_members
+    as permissive
+    for select
+    using (EXISTS (SELECT 1
+                   FROM profiles
+                   WHERE ((profiles.id = auth.uid()) AND (profiles.clan_id = clan_members.clan_id))));
+
+create policy "Leaders can update member roles" on clan_members
+    as permissive
+    for update
+    using (EXISTS (SELECT 1
+                   FROM profiles
+                   WHERE ((profiles.id = auth.uid()) AND (profiles.clan_id = clan_members.clan_id) AND
+                          (profiles.clan_role = 'leader'::text))))
+    with check (EXISTS (SELECT 1
+                        FROM profiles
+                        WHERE ((profiles.id = auth.uid()) AND (profiles.clan_id = clan_members.clan_id) AND
+                               (profiles.clan_role = 'leader'::text))));
+
+grant delete, insert, references, select, trigger, truncate, update on clan_members to anon;
+
+grant delete, insert, references, select, trigger, truncate, update on clan_members to authenticated;
+
+grant delete, insert, references, select, trigger, truncate, update on clan_members to service_role;
+
+create table pvp_matches
+(
+    id         uuid                     default gen_random_uuid() not null
+        primary key,
+    started_at timestamp with time zone default now()             not null,
+    ended_at   timestamp with time zone,
+    status     text                     default 'pending'::text   not null,
+    bet_amount integer                  default 0                 not null,
+    match_type text                     default '1v1'::text       not null,
+    winner_id  uuid
+        references ??? (),
+    created_at timestamp with time zone default now()             not null
+);
+
+alter table pvp_matches
+    owner to postgres;
+
+create policy "PvP matches are viewable by everyone" on pvp_matches
+    as permissive
+    for select
+    using true;
+
+create policy "Users can create matches" on pvp_matches
+    as permissive
+    for insert
+    with check (EXISTS (SELECT 1
+                        FROM match_participants
+                        WHERE ((match_participants.match_id = match_participants.id) AND
+                               (match_participants.user_id = auth.uid()))));
+
+create policy "PvP matches are viewable by participants" on pvp_matches
+    as permissive
+    for select
+    using (EXISTS (SELECT 1
+                   FROM match_participants
+                   WHERE ((match_participants.match_id = match_participants.id) AND
+                          (match_participants.user_id = auth.uid()))));
+
+create policy "Users can create PvP matches" on pvp_matches
+    as permissive
+    for insert
+    with check true;
+
+create policy "Users can view their own matches" on pvp_matches
+    as permissive
+    for select
+    using (EXISTS (SELECT 1
+                   FROM match_participants mp
+                   WHERE ((mp.match_id = mp.id) AND (mp.user_id = auth.uid()))));
+
+create policy "Users can view public matches" on pvp_matches
+    as permissive
+    for select
+    using (status = 'pending'::text);
+
+grant delete, insert, references, select, trigger, truncate, update on pvp_matches to anon;
+
+grant delete, insert, references, select, trigger, truncate, update on pvp_matches to authenticated;
+
+grant delete, insert, references, select, trigger, truncate, update on pvp_matches to service_role;
+
+create table match_participants
+(
+    id              uuid                     default gen_random_uuid() not null
+        primary key,
+    match_id        uuid                                               not null
+        references pvp_matches,
+    user_id         uuid                                               not null
+        references ??? (),
+    clicks_achieved integer                  default 0                 not null,
+    team            integer                  default 1                 not null,
+    joined_at       timestamp with time zone default now()             not null,
+    winnings        integer,
+    unique (match_id, user_id)
+);
+
+alter table match_participants
+    owner to postgres;
+
+create policy "Match participants are viewable by everyone" on match_participants
+    as permissive
+    for select
+    using true;
+
+create policy "Match participants are viewable by match participants" on match_participants
+    as permissive
+    for select
+    using (EXISTS (SELECT 1
+                   FROM match_participants mp
+                   WHERE ((mp.match_id = mp.match_id) AND (mp.user_id = auth.uid()))));
+
+create policy "Users can join matches" on match_participants
+    as permissive
+    for insert
+    with check (auth.uid() = user_id);
+
+create policy "Users can view match participants" on match_participants
+    as permissive
+    for select
+    using true;
+
+create policy "Users can update their own match data" on match_participants
+    as permissive
+    for update
+    using (user_id = auth.uid())
+    with check (user_id = auth.uid());
+
+grant delete, insert, references, select, trigger, truncate, update on match_participants to anon;
+
+grant delete, insert, references, select, trigger, truncate, update on match_participants to authenticated;
+
+grant delete, insert, references, select, trigger, truncate, update on match_participants to service_role;
+
+create table nfts
+(
+    id           uuid                     default gen_random_uuid() not null
+        primary key,
+    owner_id     uuid                                               not null
+        references ??? (),
+    mint_address text                                               not null
+        unique,
+    category     text                                               not null
+        constraint nfts_category_check
+            check (category = ANY (ARRAY ['skin'::text, 'power-up'::text, 'trophy'::text])),
+    name         text                                               not null,
+    image_url    text,
+    attributes   jsonb                    default '{}'::jsonb       not null,
+    created_at   timestamp with time zone default now()             not null,
+    last_used_at timestamp with time zone
+);
+
+alter table nfts
+    owner to postgres;
+
+create policy "Users can mint their own NFTs" on nfts
+    as permissive
+    for insert
+    with check (auth.uid() = owner_id);
+
+create policy "Users can update their own NFTs" on nfts
+    as permissive
+    for update
+    using (auth.uid() = owner_id);
+
+create policy "NFTs are viewable by everyone" on nfts
+    as permissive
+    for select
+    using true;
+
+create policy "Users can manage their NFTs" on nfts
+    as permissive
+    for all
+    using (auth.uid() = owner_id);
+
+grant delete, insert, references, select, trigger, truncate, update on nfts to anon;
+
+grant delete, insert, references, select, trigger, truncate, update on nfts to authenticated;
+
+grant delete, insert, references, select, trigger, truncate, update on nfts to service_role;
+
+create table prestige_data
+(
+    id                      uuid                     default uuid_generate_v4() not null
+        primary key,
+    user_id                 uuid
+        unique
+        references users
+            on delete cascade,
+    prestige_level          integer                  default 0,
+    total_prestige_earnings bigint                   default 0,
+    prestige_multiplier     double precision         default 1.0,
+    meme_upgrades_json      jsonb                    default '{}'::jsonb,
+    created_at              timestamp with time zone default now(),
+    updated_at              timestamp with time zone default now()
+);
+
+alter table prestige_data
+    owner to postgres;
+
+create policy "Users can view their own prestige data" on prestige_data
+    as permissive
+    for select
+    to authenticated
+    using (auth.uid() = user_id);
+
+create policy "Users can update their own prestige data" on prestige_data
+    as permissive
+    for update
+    to authenticated
+    using (auth.uid() = user_id);
+
+create policy "Users can create their own prestige data" on prestige_data
+    as permissive
+    for insert
+    to authenticated
+    with check (auth.uid() = user_id);
+
+grant delete, insert, references, select, trigger, truncate, update on prestige_data to anon;
+
+grant delete, insert, references, select, trigger, truncate, update on prestige_data to authenticated;
+
+grant delete, insert, references, select, trigger, truncate, update on prestige_data to service_role;
+
+create table streak_rewards
+(
+    id                   uuid                     default uuid_generate_v4() not null
+        primary key,
+    user_id              uuid
+        references users
+            on delete cascade,
+    reward_id            text                                                not null,
+    streak_days_required integer                                             not null,
+    reward_type          text                                                not null
+        constraint streak_rewards_reward_type_check
+            check (reward_type = ANY (ARRAY ['clicks'::text, 'multiplier'::text, 'power_up'::text])),
+    reward_value         jsonb                                               not null,
+    claimed              boolean                  default false,
+    claimed_at           timestamp with time zone,
+    created_at           timestamp with time zone default now(),
+    unique (user_id, reward_id)
+);
+
+alter table streak_rewards
+    owner to postgres;
+
+create policy "Users can view their own streak rewards" on streak_rewards
+    as permissive
+    for select
+    to authenticated
+    using (auth.uid() = user_id);
+
+create policy "Users can claim their own streak rewards" on streak_rewards
+    as permissive
+    for update
+    to authenticated
+    using (auth.uid() = user_id);
+
+create policy "System can create streak rewards" on streak_rewards
+    as permissive
+    for insert
+    to authenticated
+    with check true;
+
+grant delete, insert, references, select, trigger, truncate, update on streak_rewards to anon;
+
+grant delete, insert, references, select, trigger, truncate, update on streak_rewards to authenticated;
+
+grant delete, insert, references, select, trigger, truncate, update on streak_rewards to service_role;
+
+create table matches
+(
+    id         uuid                     default uuid_generate_v4() not null
+        primary key,
+    player1_id uuid
+        references users
+            on delete cascade,
+    player2_id uuid
+        references users
+            on delete cascade,
+    bet_amount bigint                   default 0                  not null,
+    winner_id  uuid
+                                                                   references users
+                                                                       on delete set null,
+    match_date timestamp with time zone default now(),
+    clicks_p1  bigint                   default 0,
+    clicks_p2  bigint                   default 0,
+    status     text                     default 'pending'::text
+        constraint matches_status_check
+            check (status = ANY (ARRAY ['pending'::text, 'in_progress'::text, 'completed'::text, 'cancelled'::text])),
+    duration   integer                  default 60,
+    created_at timestamp with time zone default now(),
+    updated_at timestamp with time zone default now(),
+    constraint different_players
+        check (player1_id <> player2_id)
+);
+
+alter table matches
+    owner to postgres;
+
+create policy "Anyone can view matches" on matches
+    as permissive
+    for select
+    using true;
+
+create policy "Users can create matches" on matches
+    as permissive
+    for insert
+    to authenticated
+    with check (auth.uid() = player1_id);
+
+create policy "Match participants can update matches" on matches
+    as permissive
+    for update
+    to authenticated
+    using ((auth.uid() = player1_id) OR (auth.uid() = player2_id));
+
+grant delete, insert, references, select, trigger, truncate, update on matches to anon;
+
+grant delete, insert, references, select, trigger, truncate, update on matches to authenticated;
+
+grant delete, insert, references, select, trigger, truncate, update on matches to service_role;
+
+create table user_game_state
+(
+    wallet_address    text                               not null
+        primary key,
+    coins             bigint                   default 0 not null,
+    total_clicks      bigint                   default 0 not null,
+    last_click_time   timestamp with time zone,
+    cooldown_end_time timestamp with time zone,
+    streak_days       integer                  default 0 not null,
+    last_login_date   timestamp with time zone,
+    created_at        timestamp with time zone default CURRENT_TIMESTAMP,
+    updated_at        timestamp with time zone default CURRENT_TIMESTAMP
+);
+
+alter table user_game_state
+    owner to postgres;
+
+grant delete, insert, references, select, trigger, truncate, update on user_game_state to anon;
+
+grant delete, insert, references, select, trigger, truncate, update on user_game_state to authenticated;
+
+grant delete, insert, references, select, trigger, truncate, update on user_game_state to service_role;
+
+create table prestige_state
+(
+    wallet_address  text                               not null
+        primary key
+        references user_game_state
+            on delete cascade,
+    level           integer                  default 1 not null,
+    multiplier      numeric                  default 1 not null,
+    total_resets    integer                  default 0 not null,
+    last_reset_date timestamp with time zone,
+    created_at      timestamp with time zone default CURRENT_TIMESTAMP,
+    updated_at      timestamp with time zone default CURRENT_TIMESTAMP
+);
+
+alter table prestige_state
+    owner to postgres;
+
+grant delete, insert, references, select, trigger, truncate, update on prestige_state to anon;
+
+grant delete, insert, references, select, trigger, truncate, update on prestige_state to authenticated;
+
+grant delete, insert, references, select, trigger, truncate, update on prestige_state to service_role;
+
+create table referral_codes
+(
+    wallet_address text not null
+        primary key
+        references user_game_state
+            on delete cascade,
+    referral_code  text not null
+        unique,
+    created_at     timestamp with time zone default CURRENT_TIMESTAMP
+);
+
+alter table referral_codes
+    owner to postgres;
+
+grant delete, insert, references, select, trigger, truncate, update on referral_codes to anon;
+
+grant delete, insert, references, select, trigger, truncate, update on referral_codes to authenticated;
+
+grant delete, insert, references, select, trigger, truncate, update on referral_codes to service_role;
+
+create table referral_stats
+(
+    wallet_address   text                               not null
+        primary key
+        references user_game_state
+            on delete cascade,
+    total_referrals  integer                  default 0 not null,
+    active_referrals integer                  default 0 not null,
+    total_earnings   bigint                   default 0 not null,
+    created_at       timestamp with time zone default CURRENT_TIMESTAMP,
+    updated_at       timestamp with time zone default CURRENT_TIMESTAMP
+);
+
+alter table referral_stats
+    owner to postgres;
+
+grant delete, insert, references, select, trigger, truncate, update on referral_stats to anon;
+
+grant delete, insert, references, select, trigger, truncate, update on referral_stats to authenticated;
+
+grant delete, insert, references, select, trigger, truncate, update on referral_stats to service_role;
+
+create table referral_leaderboard
+(
+    id              uuid                     default gen_random_uuid() not null
+        primary key,
+    wallet_address  text
+        unique
+        references user_game_state
+            on delete cascade,
+    total_referrals integer                  default 0                 not null,
+    total_earnings  bigint                   default 0                 not null,
+    rank            integer,
+    last_updated    timestamp with time zone default CURRENT_TIMESTAMP,
+    created_at      timestamp with time zone default CURRENT_TIMESTAMP,
+    updated_at      timestamp with time zone default CURRENT_TIMESTAMP
+);
+
+alter table referral_leaderboard
+    owner to postgres;
+
+grant delete, insert, references, select, trigger, truncate, update on referral_leaderboard to anon;
+
+grant delete, insert, references, select, trigger, truncate, update on referral_leaderboard to authenticated;
+
+grant delete, insert, references, select, trigger, truncate, update on referral_leaderboard to service_role;
+
+create table user_profiles
+(
+    id         uuid                                                          not null
+        primary key
+        references ??? (),
+    email      text                                                          not null,
+    username   text,
+    created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+    updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+alter table user_profiles
+    owner to postgres;
+
+create index idx_user_profiles_email
+    on user_profiles (email);
+
+create policy "Users can view their own profile" on user_profiles
+    as permissive
+    for select
+    using (auth.uid() = id);
+
+create policy "Users can update their own profile" on user_profiles
+    as permissive
+    for update
+    using (auth.uid() = id);
+
+grant delete, insert, references, select, trigger, truncate, update on user_profiles to anon;
+
+grant delete, insert, references, select, trigger, truncate, update on user_profiles to authenticated;
+
+grant delete, insert, references, select, trigger, truncate, update on user_profiles to service_role;
+
+create table game_settings
+(
+    user_id      uuid                                                                                            not null
+        primary key
+        references ??? (),
+    preferences  jsonb                    default '{"music": true, "sound": true, "notifications": true}'::jsonb not null,
+    theme        text                     default 'default'::text                                                not null,
+    last_updated timestamp with time zone default timezone('utc'::text, now())                                   not null
+);
+
+alter table game_settings
+    owner to postgres;
+
+create policy "Users can view their own settings" on game_settings
+    as permissive
+    for select
+    using (auth.uid() = user_id);
+
+create policy "Users can update their own settings" on game_settings
+    as permissive
+    for update
+    using (auth.uid() = user_id);
+
+create policy "Users can insert their own settings" on game_settings
+    as permissive
+    for insert
+    with check (auth.uid() = user_id);
+
+grant delete, insert, references, select, trigger, truncate, update on game_settings to anon;
+
+grant delete, insert, references, select, trigger, truncate, update on game_settings to authenticated;
+
+grant delete, insert, references, select, trigger, truncate, update on game_settings to service_role;
+
+create table game_statistics
+(
+    user_id         uuid                                                          not null
+        primary key
+        references ??? (),
+    total_clicks    bigint                   default 0                            not null,
+    power_ups_used  integer                  default 0                            not null,
+    streak_count    integer                  default 0                            not null,
+    last_click_time timestamp with time zone,
+    created_at      timestamp with time zone default timezone('utc'::text, now()) not null,
+    updated_at      timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+alter table game_statistics
+    owner to postgres;
+
+create policy "Users can view their own statistics" on game_statistics
+    as permissive
+    for select
+    using (auth.uid() = user_id);
+
+create policy "Users can update their own statistics" on game_statistics
+    as permissive
+    for update
+    using (auth.uid() = user_id);
+
+create policy "Users can insert their own statistics" on game_statistics
+    as permissive
+    for insert
+    with check (auth.uid() = user_id);
+
+grant delete, insert, references, select, trigger, truncate, update on game_statistics to anon;
+
+grant delete, insert, references, select, trigger, truncate, update on game_statistics to authenticated;
+
+grant delete, insert, references, select, trigger, truncate, update on game_statistics to service_role;
+
+create table leaderboard
+(
+    id             uuid                     default gen_random_uuid() not null
+        primary key,
+    user_id        uuid                                               not null
+        references ??? ()
+        on delete cascade,
+    username       text                                               not null,
+    clan_tag       text,
+    clicks         bigint                   default 0,
+    prestige_level integer                  default 0,
+    streak_days    integer                  default 0,
+    pvp_wins       integer                  default 0,
+    updated_at     timestamp with time zone default timezone('utc'::text, now()),
+    created_at     timestamp with time zone default timezone('utc'::text, now())
+);
+
+alter table leaderboard
+    owner to postgres;
+
+create index idx_leaderboard_clicks
+    on leaderboard (clicks desc);
+
+create index idx_leaderboard_prestige
+    on leaderboard (prestige_level desc);
+
+create index idx_leaderboard_streak
+    on leaderboard (streak_days desc);
+
+create index idx_leaderboard_pvp
+    on leaderboard (pvp_wins desc);
+
+create index idx_leaderboard_updated
+    on leaderboard (updated_at desc);
+
+grant delete, insert, references, select, trigger, truncate, update on leaderboard to anon;
+
+grant delete, insert, references, select, trigger, truncate, update on leaderboard to authenticated;
+
+grant delete, insert, references, select, trigger, truncate, update on leaderboard to service_role;
+
+create function add_clicks(click_count integer DEFAULT 1) returns jsonb
+    security definer
+    language plpgsql
+as
+$$
+DECLARE
+  user_id UUID := auth.uid();
+  user_click_power INT;
+  total_clicks_to_add INT;
+  result JSONB;
+BEGIN
+  -- Check if user is authenticated
+  IF user_id IS NULL THEN
+    RETURN jsonb_build_object('success', false, 'message', 'Authentication required');
+  END IF;
+  
+  -- Get user's click power
+  WITH click_power_result AS (
+    SELECT (calculate_user_click_power()->'click_power')::INT AS power
+  )
+  SELECT power INTO user_click_power FROM click_power_result;
+  
+  -- Calculate total clicks to add
+  total_clicks_to_add := click_count * user_click_power;
+  
+  -- Update user's click balance
+  UPDATE public.user_profiles
+  SET clicks = clicks + total_clicks_to_add,
+      total_lifetime_clicks = total_lifetime_clicks + total_clicks_to_add,
+      last_clicked_at = NOW()
+  WHERE id = user_id;
+  
+  -- Return the result
+  result := jsonb_build_object(
+    'success', true,
+    'clicks_added', total_clicks_to_add,
+    'click_power', user_click_power
+  );
+  
+  RETURN result;
+END;
+$$;
+
+alter function add_clicks(integer) owner to postgres;
+
+grant execute on function add_clicks(integer) to anon;
+
+grant execute on function add_clicks(integer) to authenticated;
+
+grant execute on function add_clicks(integer) to service_role;
+
+create function calculate_upgrade_cost(user_id uuid, upgrade_id uuid) returns integer
+    language plpgsql
+as
+$$
+DECLARE
+  base_cost INTEGER;
+  cost_multiplier DECIMAL;
+  current_quantity INTEGER;
+BEGIN
+  -- Get the base cost and multiplier from upgrades table
+  SELECT u.base_cost, u.cost_multiplier INTO base_cost, cost_multiplier
+  FROM public.upgrades u
+  WHERE u.id = upgrade_id;
+  
+  -- Get the current quantity owned by the user
+  SELECT COALESCE(uu.quantity, 0) INTO current_quantity
+  FROM public.user_upgrades uu
+  WHERE uu.user_id = calculate_upgrade_cost.user_id AND uu.upgrade_id = calculate_upgrade_cost.upgrade_id;
+  
+  -- Calculate the cost using a formula: base_cost * (cost_multiplier ^ current_quantity)
+  RETURN FLOOR(base_cost * POWER(cost_multiplier, current_quantity));
+END;
+$$;
+
+alter function calculate_upgrade_cost(uuid, uuid) owner to postgres;
+
+grant execute on function calculate_upgrade_cost(uuid, uuid) to anon;
+
+grant execute on function calculate_upgrade_cost(uuid, uuid) to authenticated;
+
+grant execute on function calculate_upgrade_cost(uuid, uuid) to service_role;
+
+create function calculate_user_click_power() returns jsonb
+    security definer
+    language plpgsql
+as
+$$
+DECLARE
+  user_id UUID := auth.uid();
+  base_click_power INT := 1; -- Default click power without upgrades
+  total_click_power INT;
+  result JSONB;
+BEGIN
+  -- Check if user is authenticated
+  IF user_id IS NULL THEN
+    RETURN jsonb_build_object('success', false, 'message', 'Authentication required');
+  END IF;
+  
+  -- Calculate total click power based on user's upgrades
+  SELECT 
+    SUM(u.base_click_power * uu.quantity) + base_click_power INTO total_click_power
+  FROM 
+    public.user_upgrades uu
+  JOIN 
+    public.upgrades u ON uu.upgrade_id = u.id
+  WHERE 
+    uu.user_id = user_id;
+    
+  -- Handle case where user has no upgrades
+  IF total_click_power IS NULL THEN
+    total_click_power := base_click_power;
+  END IF;
+  
+  -- Return the result
+  result := jsonb_build_object(
+    'success', true,
+    'click_power', total_click_power
+  );
+  
+  RETURN result;
+END;
+$$;
+
+alter function calculate_user_click_power() owner to postgres;
+
+grant execute on function calculate_user_click_power() to anon;
+
+grant execute on function calculate_user_click_power() to authenticated;
+
+grant execute on function calculate_user_click_power() to service_role;
+
+create function claim_streak_milestone_reward()
+    returns TABLE(reward_claimed boolean, clicks_awarded bigint)
+    security definer
+    language plpgsql
+as
+$$
+DECLARE
+    _user_id UUID;
+    _streak_record RECORD;
+    _reward_clicks BIGINT;
+BEGIN
+    -- Get authenticated user ID
+    _user_id := auth.uid();
+    IF _user_id IS NULL THEN
+        RAISE EXCEPTION 'Not authenticated';
+    END IF;
+
+    -- Get streak record
+    SELECT * FROM public.streaks 
+    WHERE user_id = _user_id 
+    INTO _streak_record;
+
+    -- Check if milestone is reached
+    IF _streak_record.current_streak < _streak_record.next_milestone THEN
+        RETURN QUERY SELECT false::BOOLEAN, 0::BIGINT;
+        RETURN;
+    END IF;
+
+    -- Calculate reward (base reward * milestone level)
+    _reward_clicks := 100 * (_streak_record.next_milestone / 5);
+
+    -- Update user's clicks
+    UPDATE public.profiles
+    SET current_clicks = current_clicks + _reward_clicks,
+        total_clicks = total_clicks + _reward_clicks
+    WHERE id = _user_id;
+
+    -- Log the click reward
+    INSERT INTO public.clicks (user_id, amount, source)
+    VALUES (_user_id, _reward_clicks, 'streak_milestone');
+
+    -- Return success
+    RETURN QUERY SELECT true::BOOLEAN, _reward_clicks::BIGINT;
+END;
+$$;
+
+alter function claim_streak_milestone_reward() owner to postgres;
+
+grant execute on function claim_streak_milestone_reward() to anon;
+
+grant execute on function claim_streak_milestone_reward() to authenticated;
+
+grant execute on function claim_streak_milestone_reward() to service_role;
+
+create function get_or_create_user(wallet_address text) returns jsonb
+    security definer
+    language plpgsql
+as
+$$
+DECLARE
+  user_record RECORD;
+  result JSONB;
+BEGIN
+  -- Check if user exists
+  SELECT * INTO user_record FROM users WHERE users.wallet_address = get_or_create_user.wallet_address;
+  
+  -- If user doesn't exist, create one
+  IF user_record IS NULL THEN
+    INSERT INTO users (wallet_address, clicks, last_login)
+    VALUES (get_or_create_user.wallet_address, 0, NOW())
+    RETURNING * INTO user_record;
+    
+    result := jsonb_build_object(
+      'success', true,
+      'message', 'User created successfully',
+      'user', jsonb_build_object(
+        'id', user_record.id,
+        'wallet_address', user_record.wallet_address,
+        'clicks', user_record.clicks,
+        'created_at', user_record.created_at
+      )
+    );
+  ELSE
+    -- Update last login time
+    UPDATE users 
+    SET last_login = NOW()
+    WHERE users.wallet_address = get_or_create_user.wallet_address;
+    
+    result := jsonb_build_object(
+      'success', true,
+      'message', 'User found',
+      'user', jsonb_build_object(
+        'id', user_record.id,
+        'wallet_address', user_record.wallet_address,
+        'clicks', user_record.clicks,
+        'created_at', user_record.created_at
+      )
+    );
+  END IF;
+  
+  RETURN result;
+END;
+$$;
+
+alter function get_or_create_user(text) owner to postgres;
+
+grant execute on function get_or_create_user(text) to anon;
+
+grant execute on function get_or_create_user(text) to authenticated;
+
+grant execute on function get_or_create_user(text) to service_role;
+
+create function get_user_info() returns jsonb
+    security definer
+    language plpgsql
+as
+$$
+DECLARE
+  user_id UUID := auth.uid();
+  user_record RECORD;
+  user_upgrades JSONB;
+  result JSONB;
+BEGIN
+  -- Check if user is authenticated
+  IF user_id IS NULL THEN
+    RETURN jsonb_build_object('success', false, 'message', 'Authentication required');
+  END IF;
+  
+  -- Get user information
+  SELECT * INTO user_record FROM users WHERE id = user_id;
+  
+  -- If user not found
+  IF user_record IS NULL THEN
+    RETURN jsonb_build_object('success', false, 'message', 'User not found');
+  END IF;
+  
+  -- Get user upgrades
+  SELECT jsonb_agg(
+    jsonb_build_object(
+      'id', u.id,
+      'name', u.name,
+      'description', u.description,
+      'cost', u.cost,
+      'click_power', u.click_power,
+      'quantity', uu.quantity
+    )
+  ) INTO user_upgrades
+  FROM user_upgrades uu
+  JOIN upgrades u ON uu.upgrade_id = u.id
+  WHERE uu.user_id = user_id;
+  
+  -- Handle case where user has no upgrades
+  IF user_upgrades IS NULL THEN
+    user_upgrades := '[]'::jsonb;
+  END IF;
+  
+  -- Build response
+  result := jsonb_build_object(
+    'success', true,
+    'user', jsonb_build_object(
+      'id', user_record.id,
+      'wallet_address', user_record.wallet_address,
+      'clicks', user_record.clicks,
+      'created_at', user_record.created_at,
+      'last_login', user_record.last_login
+    ),
+    'upgrades', user_upgrades
+  );
+  
+  RETURN result;
+END;
+$$;
+
+alter function get_user_info() owner to postgres;
+
+grant execute on function get_user_info() to anon;
+
+grant execute on function get_user_info() to authenticated;
+
+grant execute on function get_user_info() to service_role;
+
+create function get_user_upgrades() returns jsonb
+    security definer
+    language plpgsql
+as
+$$
+DECLARE
+  user_id UUID := auth.uid();
+  result JSONB;
+BEGIN
+  -- Check if user is authenticated
+  IF user_id IS NULL THEN
+    RETURN jsonb_build_object('success', false, 'message', 'Authentication required');
+  END IF;
+  
+  -- Get all upgrades for this user with additional upgrade info
+  SELECT jsonb_build_object(
+    'success', true,
+    'upgrades', jsonb_agg(
+      jsonb_build_object(
+        'id', u.id,
+        'name', u.name,
+        'description', u.description,
+        'cost', u.cost,
+        'click_power', u.click_power,
+        'quantity', uu.quantity
+      )
+    )
+  ) INTO result
+  FROM user_upgrades uu
+  JOIN upgrades u ON uu.upgrade_id = u.id
+  WHERE uu.user_id = user_id;
+  
+  -- Handle case where user has no upgrades
+  IF result IS NULL THEN
+    result := jsonb_build_object('success', true, 'upgrades', '[]'::jsonb);
+  END IF;
+  
+  RETURN result;
+END;
+$$;
+
+alter function get_user_upgrades() owner to postgres;
+
+grant execute on function get_user_upgrades() to anon;
+
+grant execute on function get_user_upgrades() to authenticated;
+
+grant execute on function get_user_upgrades() to service_role;
+
+create function purchase_upgrade(upgrade_id uuid) returns jsonb
+    security definer
+    language plpgsql
+as
+$$
+DECLARE
+  user_id UUID := auth.uid();
+  upgrade_record RECORD;
+  user_clicks INT;
+  result JSONB;
+BEGIN
+  -- Check if user is authenticated
+  IF user_id IS NULL THEN
+    RETURN jsonb_build_object('success', false, 'message', 'Authentication required');
+  END IF;
+  
+  -- Get the upgrade info
+  SELECT * INTO upgrade_record FROM upgrades WHERE id = upgrade_id;
+  
+  -- Check if upgrade exists
+  IF upgrade_record IS NULL THEN
+    RETURN jsonb_build_object('success', false, 'message', 'Upgrade not found');
+  END IF;
+  
+  -- Get user's current click balance
+  SELECT clicks INTO user_clicks FROM user_profiles WHERE id = user_id;
+  
+  -- Check if user has enough clicks
+  IF user_clicks < upgrade_record.cost THEN
+    RETURN jsonb_build_object(
+      'success', false, 
+      'message', 'Not enough clicks', 
+      'current_clicks', user_clicks, 
+      'required_clicks', upgrade_record.cost
+    );
+  END IF;
+  
+  -- Check if user already has this upgrade
+  IF EXISTS (SELECT 1 FROM user_upgrades WHERE user_id = user_id AND upgrade_id = upgrade_id) THEN
+    -- Increment quantity if user already has this upgrade
+    UPDATE user_upgrades 
+    SET quantity = quantity + 1
+    WHERE user_id = user_id AND upgrade_id = upgrade_id;
+  ELSE
+    -- Add new upgrade to user's inventory
+    INSERT INTO user_upgrades (user_id, upgrade_id, quantity)
+    VALUES (user_id, upgrade_id, 1);
+  END IF;
+  
+  -- Deduct clicks from user's balance
+  UPDATE user_profiles
+  SET clicks = clicks - upgrade_record.cost
+  WHERE id = user_id;
+  
+  -- Return success result
+  result := jsonb_build_object(
+    'success', true,
+    'message', 'Upgrade purchased successfully',
+    'upgrade', jsonb_build_object(
+      'id', upgrade_record.id,
+      'name', upgrade_record.name,
+      'cost', upgrade_record.cost,
+      'click_power', upgrade_record.click_power
+    ),
+    'remaining_clicks', user_clicks - upgrade_record.cost
+  );
+  
+  RETURN result;
+END;
+$$;
+
+alter function purchase_upgrade(uuid) owner to postgres;
+
+grant execute on function purchase_upgrade(uuid) to anon;
+
+grant execute on function purchase_upgrade(uuid) to authenticated;
+
+grant execute on function purchase_upgrade(uuid) to service_role;
+
+create function update_streak() returns trigger
+    language plpgsql
+as
+$$
+DECLARE
+  last_login TIMESTAMPTZ;
+  current_date DATE := (NOW() AT TIME ZONE 'UTC')::DATE;
+  last_date DATE;
+BEGIN
+  SELECT last_played_at INTO last_login 
+  FROM public.streaks 
+  WHERE user_id = NEW.id;
+  
+  IF last_login IS NULL THEN
+    -- First login, initialize streak
+    INSERT INTO public.streaks (
+      user_id, 
+      current_streak, 
+      longest_streak, 
+      last_played_at
+    )
+    VALUES (
+      NEW.id, 
+      1, 
+      1, 
+      NOW()
+    )
+    ON CONFLICT (user_id) DO UPDATE
+    SET current_streak = 1, 
+        last_played_at = NOW();
+  ELSE
+    last_date := (last_login AT TIME ZONE 'UTC')::DATE;
+    
+    IF current_date = last_date THEN
+      -- Already logged in today, do nothing
+      RETURN NEW;
+    ELSIF current_date = last_date + INTERVAL '1 day' THEN
+      -- Next day, increment streak
+      UPDATE public.streaks
+      SET 
+        current_streak = current_streak + 1,
+        longest_streak = GREATEST(longest_streak, current_streak + 1),
+        last_played_at = NOW(),
+        next_milestone = CASE
+          WHEN current_streak + 1 >= next_milestone THEN
+            CASE
+              WHEN next_milestone = 5 THEN 10
+              WHEN next_milestone = 10 THEN 15
+              WHEN next_milestone = 15 THEN 20
+              WHEN next_milestone = 20 THEN 25
+              WHEN next_milestone = 25 THEN 30
+              ELSE 30
+            END
+          ELSE next_milestone
+        END
+      WHERE user_id = NEW.id;
+      
+      -- Update streak multiplier in profiles
+      UPDATE public.profiles
+      SET streak_multiplier = LEAST(1.0 + ((
+        SELECT current_streak 
+        FROM public.streaks 
+        WHERE user_id = NEW.id
+      ) * 0.033), 2.0)
+      WHERE id = NEW.id;
+    ELSE
+      -- Streak broken
+      UPDATE public.streaks
+      SET current_streak = 1, 
+          last_played_at = NOW()
+      WHERE user_id = NEW.id;
+      
+      -- Reset streak multiplier
+      UPDATE public.profiles
+      SET streak_multiplier = 1.0
+      WHERE id = NEW.id;
+    END IF;
+  END IF;
+  
+  RETURN NEW;
+END;
+$$;
+
+alter function update_streak() owner to postgres;
+
+create trigger update_streaks_updated_at
+    before update
+    on streaks
+    for each row
+execute procedure update_streak();
+
+grant execute on function update_streak() to anon;
+
+grant execute on function update_streak() to authenticated;
+
+grant execute on function update_streak() to service_role;
+
+create function update_user_streak()
+    returns TABLE(current_streak integer, longest_streak integer, next_milestone integer, milestone_reached boolean, streak_broken boolean)
+    security definer
+    language plpgsql
+as
+$$
+DECLARE
+    _user_id UUID;
+    _last_played_at TIMESTAMP WITH TIME ZONE;
+    _now TIMESTAMP WITH TIME ZONE;
+    _streak_record RECORD;
+    _milestone_reached BOOLEAN := false;
+    _streak_broken BOOLEAN := false;
+BEGIN
+    -- Get authenticated user ID
+    _user_id := auth.uid();
+    IF _user_id IS NULL THEN
+        RAISE EXCEPTION 'Not authenticated';
+    END IF;
+
+    _now := timezone('utc'::text, now());
+
+    -- Get or create streak record
+    INSERT INTO public.streaks (user_id)
+    VALUES (_user_id)
+    ON CONFLICT (user_id) DO NOTHING;
+
+    SELECT * FROM public.streaks 
+    WHERE user_id = _user_id 
+    INTO _streak_record;
+
+    -- Check if this is the first play or if the streak is maintained
+    IF _streak_record.last_played_at IS NULL THEN
+        -- First time playing
+        UPDATE public.streaks
+        SET current_streak = 1,
+            longest_streak = GREATEST(1, longest_streak),
+            last_played_at = _now
+        WHERE user_id = _user_id;
+    ELSE
+        -- Check if the streak is maintained (within 24 hours)
+        IF _now - _streak_record.last_played_at <= INTERVAL '24 hours' THEN
+            -- Streak continues
+            UPDATE public.streaks
+            SET current_streak = current_streak + 1,
+                longest_streak = GREATEST(current_streak + 1, longest_streak),
+                last_played_at = _now,
+                next_milestone = CASE 
+                    WHEN current_streak + 1 >= next_milestone THEN next_milestone * 2
+                    ELSE next_milestone
+                END
+            WHERE user_id = _user_id;
+
+            -- Check if milestone reached
+            IF _streak_record.current_streak + 1 >= _streak_record.next_milestone THEN
+                _milestone_reached := true;
+            END IF;
+        ELSE
+            -- Streak broken
+            UPDATE public.streaks
+            SET current_streak = 1,
+                last_played_at = _now,
+                next_milestone = 5
+            WHERE user_id = _user_id;
+            _streak_broken := true;
+        END IF;
+    END IF;
+
+    -- Return updated streak info
+    RETURN QUERY
+    SELECT s.current_streak,
+           s.longest_streak,
+           s.next_milestone,
+           _milestone_reached,
+           _streak_broken
+    FROM public.streaks s
+    WHERE s.user_id = _user_id;
+END;
+$$;
+
+alter function update_user_streak() owner to postgres;
+
+grant execute on function update_user_streak() to anon;
+
+grant execute on function update_user_streak() to authenticated;
+
+grant execute on function update_user_streak() to service_role;
+
+create function record_click(p_user_id uuid, p_amount integer, p_source text DEFAULT 'manual'::text) returns json
+    security definer
+    SET search_path = public
+    language plpgsql
+as
+$$
+DECLARE
+    v_cooldown_end timestamptz;
+    v_last_click timestamptz;
+    v_current_time timestamptz;
+    v_result json;
+BEGIN
+    -- Get current cooldown state
+    SELECT cooldown_end_time, last_click_time
+    INTO v_cooldown_end, v_last_click
+    FROM profiles
+    WHERE id = p_user_id;
+    
+    v_current_time := now();
+    
+    -- Check if click is allowed (not in cooldown)
+    IF v_cooldown_end IS NOT NULL AND v_current_time < v_cooldown_end THEN
+        RETURN json_build_object(
+            'success', false,
+            'message', 'Click cooldown active',
+            'cooldown_end', v_cooldown_end
+        );
+    END IF;
+    
+    -- Check minimum time between clicks (50ms)
+    IF v_last_click IS NOT NULL AND 
+       extract(epoch from (v_current_time - v_last_click)) * 1000 < 50 THEN
+        RETURN json_build_object(
+            'success', false,
+            'message', 'Clicking too fast',
+            'last_click', v_last_click
+        );
+    END IF;
+
+    -- Record the click
+    INSERT INTO clicks (user_id, amount, source)
+    VALUES (p_user_id, p_amount, p_source);
+    
+    -- Update user profile
+    UPDATE profiles
+    SET total_clicks = total_clicks + p_amount,
+        current_clicks = current_clicks + p_amount,
+        last_click_time = v_current_time,
+        cooldown_end_time = CASE 
+            WHEN p_source = 'manual' THEN v_current_time + interval '50 milliseconds'
+            ELSE cooldown_end_time
+        END
+    WHERE id = p_user_id
+    RETURNING json_build_object(
+        'success', true,
+        'total_clicks', total_clicks,
+        'current_clicks', current_clicks,
+        'last_click_time', last_click_time,
+        'cooldown_end_time', cooldown_end_time
+    ) INTO v_result;
+    
+    RETURN v_result;
+END;
+$$;
+
+alter function record_click(uuid, integer, text) owner to postgres;
+
+grant execute on function record_click(uuid, integer, text) to anon;
+
+grant execute on function record_click(uuid, integer, text) to authenticated;
+
+grant execute on function record_click(uuid, integer, text) to service_role;
+
+create function claim_offline_earnings(p_user_id uuid, p_earnings_id uuid) returns json
+    security definer
+    SET search_path = public
+    language plpgsql
+as
+$$
+DECLARE
+    v_amount bigint;
+    v_result json;
+BEGIN
+    -- Get and mark earnings as collected
+    UPDATE offline_earnings
+    SET collected = true
+    WHERE id = p_earnings_id AND user_id = p_user_id AND NOT collected
+    RETURNING amount INTO v_amount;
+    
+    IF v_amount IS NULL THEN
+        RETURN json_build_object(
+            'success', false,
+            'message', 'No uncollected earnings found'
+        );
+    END IF;
+    
+    -- Add earnings to user's coins
+    UPDATE profiles
+    SET coins = coins + v_amount
+    WHERE id = p_user_id
+    RETURNING json_build_object(
+        'success', true,
+        'amount', v_amount,
+        'new_balance', coins
+    ) INTO v_result;
+    
+    RETURN v_result;
+END;
+$$;
+
+alter function claim_offline_earnings(uuid, uuid) owner to postgres;
+
+grant execute on function claim_offline_earnings(uuid, uuid) to anon;
+
+grant execute on function claim_offline_earnings(uuid, uuid) to authenticated;
+
+grant execute on function claim_offline_earnings(uuid, uuid) to service_role;
+
+create function process_referral(p_referrer_id uuid, p_referred_wallet text, p_code text) returns json
+    security definer
+    SET search_path = public
+    language plpgsql
+as
+$$
+DECLARE
+    v_referred_id uuid;
+    v_result json;
+BEGIN
+    -- Get referred user's ID
+    SELECT id INTO v_referred_id
+    FROM users
+    WHERE wallet_address = p_referred_wallet;
+    
+    IF v_referred_id IS NULL THEN
+        RETURN json_build_object(
+            'success', false,
+            'message', 'Referred user not found'
+        );
+    END IF;
+    
+    -- Create referral record
+    INSERT INTO referrals (
+        referrer_id,
+        referred_id,
+        code,
+        status
+    )
+    VALUES (
+        p_referrer_id,
+        v_referred_id,
+        p_code,
+        'completed'
+    )
+    ON CONFLICT (referred_id) DO NOTHING
+    RETURNING json_build_object(
+        'success', true,
+        'referral_id', id,
+        'status', status
+    ) INTO v_result;
+    
+    IF v_result IS NULL THEN
+        RETURN json_build_object(
+            'success', false,
+            'message', 'User already referred'
+        );
+    END IF;
+    
+    -- Create reward for referrer
+    INSERT INTO referral_rewards (
+        user_id,
+        reward_type,
+        amount
+    )
+    VALUES (
+        p_referrer_id,
+        'coins',
+        1000
+    );
+    
+    RETURN v_result;
+END;
+$$;
+
+alter function process_referral(uuid, text, text) owner to postgres;
+
+grant execute on function process_referral(uuid, text, text) to anon;
+
+grant execute on function process_referral(uuid, text, text) to authenticated;
+
+grant execute on function process_referral(uuid, text, text) to service_role;
+
+create function get_user_by_wallet(p_wallet_address text)
+    returns TABLE(id uuid, wallet_address text, created_at timestamp with time zone)
+    security definer
+    language plpgsql
+as
+$$
+BEGIN
+  RETURN QUERY
+  SELECT auth.users.id, profiles.wallet_address, auth.users.created_at
+  FROM auth.users
+  JOIN public.profiles ON auth.users.id = profiles.id
+  WHERE profiles.wallet_address = p_wallet_address;
+END;
+$$;
+
+alter function get_user_by_wallet(text) owner to postgres;
+
+grant execute on function get_user_by_wallet(text) to anon;
+
+grant execute on function get_user_by_wallet(text) to authenticated;
+
+grant execute on function get_user_by_wallet(text) to service_role;
+
+create function create_wallet_user(p_wallet_address text)
+    returns TABLE(id uuid, wallet_address text)
+    security definer
+    language plpgsql
+as
+$$
+DECLARE
+  v_user_id UUID;
+BEGIN
+  -- Create user in auth.users
+  INSERT INTO auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, last_sign_in_at)
+  VALUES
+    ('00000000-0000-0000-0000-000000000000', gen_random_uuid(), 'authenticated', 'authenticated',
+     p_wallet_address || '@wallet.local',
+     crypt(p_wallet_address, gen_salt('bf')),
+     NOW(),
+     NOW(),
+     NOW(),
+     NOW())
+  RETURNING id INTO v_user_id;
+
+  -- Create profile
+  INSERT INTO public.profiles (id, wallet_address, username, updated_at)
+  VALUES (
+    v_user_id,
+    p_wallet_address,
+    'Player_' || substring(p_wallet_address from 1 for 6),
+    NOW()
+  );
+
+  RETURN QUERY
+  SELECT v_user_id AS id, p_wallet_address;
+END;
+$$;
+
+alter function create_wallet_user(text) owner to postgres;
+
+grant execute on function create_wallet_user(text) to anon;
+
+grant execute on function create_wallet_user(text) to authenticated;
+
+grant execute on function create_wallet_user(text) to service_role;
+
+create function generate_wallet_jwt(p_wallet_address text, p_user_id uuid)
+    returns TABLE(token text)
+    security definer
+    language plpgsql
+as
+$$
+DECLARE
+  v_token TEXT;
+BEGIN
+  -- Generate JWT token using auth.jwt_sign
+  SELECT auth.sign(
+    json_build_object(
+      'role', 'authenticated',
+      'aud', 'authenticated',
+      'email', p_wallet_address || '@wallet.local',
+      'sub', p_user_id::TEXT,
+      'exp', extract(epoch from (now() + interval '1 week'))::integer
+    ),
+    current_setting('app.settings.jwt_secret')
+  ) INTO v_token;
+
+  RETURN QUERY
+  SELECT v_token;
+END;
+$$;
+
+alter function generate_wallet_jwt(text, uuid) owner to postgres;
+
+grant execute on function generate_wallet_jwt(text, uuid) to anon;
+
+grant execute on function generate_wallet_jwt(text, uuid) to authenticated;
+
+grant execute on function generate_wallet_jwt(text, uuid) to service_role;
+
+create function calculate_user_multiplier(user_uuid uuid) returns numeric
+    language plpgsql
+as
+$$
+DECLARE
+  streak_mult NUMERIC := 1.0;
+  prestige_mult NUMERIC := 1.0;
+  powerup_mult NUMERIC := 1.0;
+  nft_mult NUMERIC := 1.0;
+BEGIN
+  -- Get streak multiplier
+  SELECT COALESCE(streak_multiplier, 1.0) INTO streak_mult
+  FROM public.profiles
+  WHERE id = user_uuid;
+  
+  -- Get prestige multiplier
+  SELECT COALESCE(multiplier, 1.0) INTO prestige_mult
+  FROM public.prestige
+  WHERE user_id = user_uuid;
+  
+  -- Get active power-up multiplier
+  SELECT COALESCE(MAX(multiplier), 1.0) INTO powerup_mult
+  FROM public.power_ups
+  WHERE user_id = user_uuid
+    AND active_until > NOW();
+  
+  -- Get NFT multiplier (from attributes)
+  SELECT COALESCE(MAX(
+    CASE 
+      WHEN attributes->>'multiplier' IS NOT NULL 
+      THEN (attributes->>'multiplier')::numeric 
+      ELSE 1.0 
+    END
+  ), 1.0) INTO nft_mult
+  FROM public.nfts
+  WHERE owner_id = user_uuid
+    AND category = 'power-up';
+  
+  -- Return combined multiplier
+  RETURN streak_mult * prestige_mult * powerup_mult * nft_mult;
+END;
+$$;
+
+alter function calculate_user_multiplier(uuid) owner to postgres;
+
+grant execute on function calculate_user_multiplier(uuid) to anon;
+
+grant execute on function calculate_user_multiplier(uuid) to authenticated;
+
+grant execute on function calculate_user_multiplier(uuid) to service_role;
+
+create function check_click_cooldown(user_uuid uuid) returns boolean
+    language plpgsql
+as
+$$
+DECLARE
+  last_click TIMESTAMPTZ;
+  cooldown_period INTERVAL := INTERVAL '15 minutes';
+BEGIN
+  -- Get the timestamp of the user's most recent click
+  SELECT cooldown_end_time INTO last_click 
+  FROM public.profiles 
+  WHERE id = user_uuid;
+  
+  -- If no previous click or cooldown has passed, allow clicking
+  IF last_click IS NULL OR NOW() >= last_click THEN
+    RETURN TRUE;
+  ELSE
+    RETURN FALSE;
+  END IF;
+END;
+$$;
+
+alter function check_click_cooldown(uuid) owner to postgres;
+
+grant execute on function check_click_cooldown(uuid) to anon;
+
+grant execute on function check_click_cooldown(uuid) to authenticated;
+
+grant execute on function check_click_cooldown(uuid) to service_role;
+
+create function update_clan_stats() returns trigger
+    language plpgsql
+as
+$$
+BEGIN
+  -- Update clan member count
+  UPDATE public.clans c
+  SET 
+    member_count = (
+      SELECT COUNT(*) 
+      FROM public.clan_members cm 
+      WHERE cm.clan_id = c.id
+    ),
+    total_clicks = (
+      SELECT COALESCE(SUM(contribution_clicks), 0)
+      FROM public.clan_members cm
+      WHERE cm.clan_id = c.id
+    )
+  WHERE c.id = NEW.clan_id;
+  
+  RETURN NEW;
+END;
+$$;
+
+alter function update_clan_stats() owner to postgres;
+
+create trigger after_clan_member_change
+    after insert or update or delete
+    on clan_members
+    for each row
+execute procedure update_clan_stats();
+
+grant execute on function update_clan_stats() to anon;
+
+grant execute on function update_clan_stats() to authenticated;
+
+grant execute on function update_clan_stats() to service_role;
+
+create function calculate_offline_earnings(user_uuid uuid) returns bigint
+    language plpgsql
+as
+$$
+DECLARE
+  last_session TIMESTAMPTZ;
+  earnings_rate NUMERIC;
+  last_earnings BIGINT;
+  offline_duration INTERVAL;
+  max_offline_duration INTERVAL := INTERVAL '8 hours';
+  total_earnings BIGINT;
+BEGIN
+  -- Get user's last session and earnings rate
+  SELECT p.updated_at, p.offline_earnings_rate, p.last_session_earnings
+  INTO last_session, earnings_rate, last_earnings
+  FROM public.profiles p
+  WHERE p.id = user_uuid;
+  
+  -- Calculate offline duration
+  offline_duration := LEAST(NOW() - last_session, max_offline_duration);
+  
+  -- Calculate earnings (10% of last session earnings per hour, up to 8 hours)
+  total_earnings := (
+    EXTRACT(EPOCH FROM offline_duration) / 3600 * 
+    last_earnings * 
+    earnings_rate
+  )::BIGINT;
+  
+  RETURN total_earnings;
+END;
+$$;
+
+alter function calculate_offline_earnings(uuid) owner to postgres;
+
+grant execute on function calculate_offline_earnings(uuid) to anon;
+
+grant execute on function calculate_offline_earnings(uuid) to authenticated;
+
+grant execute on function calculate_offline_earnings(uuid) to service_role;
+
+create function update_profile_after_click() returns trigger
+    language plpgsql
+as
+$$
+BEGIN
+  UPDATE public.profiles
+  SET 
+    total_clicks = total_clicks + NEW.amount,
+    current_clicks = current_clicks + NEW.amount,
+    coins = coins + (NEW.amount * NEW.multiplier)::bigint,
+    last_click_time = NEW.timestamp,
+    cooldown_end_time = CASE 
+      WHEN NEW.source = 'regular' THEN NEW.timestamp + INTERVAL '15 minutes'
+      ELSE cooldown_end_time
+    END
+  WHERE id = NEW.user_id;
+  RETURN NEW;
+END;
+$$;
+
+alter function update_profile_after_click() owner to postgres;
+
+create trigger after_click_insert
+    after insert
+    on clicks
+    for each row
+execute procedure update_profile_after_click();
+
+grant execute on function update_profile_after_click() to anon;
+
+grant execute on function update_profile_after_click() to authenticated;
+
+grant execute on function update_profile_after_click() to service_role;
+
+create function add_wallet_fingerprint() returns trigger
+    language plpgsql
+as
+$$
+BEGIN
+  INSERT INTO public.wallet_fingerprints (
+    wallet_address,
+    first_seen,
+    risk_score,
+    transaction_count
+  )
+  VALUES (
+    NEW.wallet_address,
+    NOW(),
+    0,
+    0
+  )
+  ON CONFLICT (wallet_address) 
+  DO NOTHING;
+  RETURN NEW;
+END;
+$$;
+
+alter function add_wallet_fingerprint() owner to postgres;
+
+create trigger after_wallet_connect
+    after insert
+    on users
+    for each row
+execute procedure add_wallet_fingerprint();
+
+grant execute on function add_wallet_fingerprint() to anon;
+
+grant execute on function add_wallet_fingerprint() to authenticated;
+
+grant execute on function add_wallet_fingerprint() to service_role;
+
+create function create_profile_on_signup() returns trigger
+    language plpgsql
+as
+$$
+BEGIN
+  INSERT INTO public.profiles (
+    id,
+    username,
+    total_clicks,
+    current_clicks,
+    clicks_per_second,
+    coins,
+    streak_multiplier,
+    prestige_multiplier,
+    offline_earnings_rate
+  )
+  VALUES (
+    NEW.id,
+    'player_' || substr(NEW.id::text, 1, 8),
+    0,
+    0,
+    0,
+    0,
+    1.0,
+    1.0,
+    0.10
+  );
+  RETURN NEW;
+END;
+$$;
+
+alter function create_profile_on_signup() owner to postgres;
+
+grant execute on function create_profile_on_signup() to anon;
+
+grant execute on function create_profile_on_signup() to authenticated;
+
+grant execute on function create_profile_on_signup() to service_role;
+
+create function get_power_up_status(p_user_id uuid, p_power_up_type text) returns json
+    security definer
+    language plpgsql
+as
+$$
+DECLARE
+  v_power_up record;
+BEGIN
+  SELECT * INTO v_power_up
+  FROM public.power_ups
+  WHERE user_id = p_user_id AND type = p_power_up_type;
+  
+  RETURN json_build_object(
+    'is_active', COALESCE(v_power_up.is_active, false),
+    'active_until', v_power_up.active_until,
+    'next_available', v_power_up.next_available,
+    'cooldown_remaining', 
+      CASE 
+        WHEN v_power_up.next_available > NOW() 
+        THEN extract(epoch from (v_power_up.next_available - NOW()))::integer
+        ELSE 0
+      END
+  );
+END;
+$$;
+
+alter function get_power_up_status(uuid, text) owner to postgres;
+
+grant execute on function get_power_up_status(uuid, text) to anon;
+
+grant execute on function get_power_up_status(uuid, text) to authenticated;
+
+grant execute on function get_power_up_status(uuid, text) to service_role;
+
+create function activate_power_up(p_user_id uuid, p_power_up_id text, p_duration interval) returns json
+    security definer
+    language plpgsql
+as
+$$
+DECLARE
+  v_power_up record;
+  v_now timestamp with time zone;
+BEGIN
+  v_now := now();
+  
+  -- Get the power-up
+  SELECT * INTO v_power_up
+  FROM public.power_ups
+  WHERE id = p_power_up_id AND user_id = p_user_id;
+  
+  IF NOT FOUND THEN
+    RETURN json_build_object(
+      'success', false,
+      'message', 'Power-up not found'
+    );
+  END IF;
+  
+  -- Check if power-up is already active
+  IF v_power_up.active_until IS NOT NULL AND v_power_up.active_until > v_now THEN
+    RETURN json_build_object(
+      'success', false,
+      'message', 'Power-up already active',
+      'active_until', v_power_up.active_until
+    );
+  END IF;
+  
+  -- Update power-up
+  UPDATE public.power_ups
+  SET 
+    active_until = v_now + p_duration,
+    updated_at = v_now
+  WHERE id = p_power_up_id;
+  
+  RETURN json_build_object(
+    'success', true,
+    'active_until', v_now + p_duration,
+    'type', v_power_up.type,
+    'multiplier', v_power_up.multiplier
+  );
+END;
+$$;
+
+alter function activate_power_up(uuid, text, interval) owner to postgres;
+
+grant execute on function activate_power_up(uuid, text, interval) to anon;
+
+grant execute on function activate_power_up(uuid, text, interval) to authenticated;
+
+grant execute on function activate_power_up(uuid, text, interval) to service_role;
+
+create function handle_auto_clicker_click(p_user_id uuid, p_base_amount integer, p_multiplier numeric) returns json
+    security definer
+    language plpgsql
+as
+$$
+DECLARE
+  v_amount bigint;
+  v_profile record;
+BEGIN
+  -- Calculate click amount
+  v_amount := (p_base_amount * p_multiplier)::bigint;
+  
+  -- Update profile
+  UPDATE public.profiles
+  SET 
+    coins = coins + v_amount,
+    total_clicks = total_clicks + 1,
+    current_clicks = current_clicks + 1,
+    last_click_time = now()
+  WHERE id = p_user_id
+  RETURNING * INTO v_profile;
+  
+  -- Record click
+  INSERT INTO public.clicks (
+    user_id,
+    amount,
+    multiplier,
+    source,
+    timestamp
+  ) VALUES (
+    p_user_id,
+    p_base_amount,
+    p_multiplier,
+    'auto_clicker',
+    now()
+  );
+  
+  RETURN json_build_object(
+    'success', true,
+    'new_balance', v_profile.coins,
+    'total_clicks', v_profile.total_clicks
+  );
+END;
+$$;
+
+alter function handle_auto_clicker_click(uuid, integer, numeric) owner to postgres;
+
+grant execute on function handle_auto_clicker_click(uuid, integer, numeric) to anon;
+
+grant execute on function handle_auto_clicker_click(uuid, integer, numeric) to authenticated;
+
+grant execute on function handle_auto_clicker_click(uuid, integer, numeric) to service_role;
+
+create function perform_prestige(p_user_id uuid, p_current_clicks bigint) returns jsonb
+    security definer
+    language plpgsql
+as
+$$
+DECLARE
+    prestige_result JSONB;
+    new_prestige_level INTEGER;
+    new_multiplier FLOAT;
+BEGIN
+    -- Calculate new prestige level and multiplier
+    SELECT 
+        COALESCE(prestige_level, 0) + 1,
+        (COALESCE(prestige_multiplier, 1.0) * 1.5)::FLOAT
+    INTO new_prestige_level, new_multiplier
+    FROM prestige_data
+    WHERE user_id = p_user_id;
+
+    -- If no prestige data exists, set initial values
+    IF NOT FOUND THEN
+        new_prestige_level := 1;
+        new_multiplier := 1.5;
+    END IF;
+
+    -- Update or insert prestige data
+    INSERT INTO prestige_data (
+        user_id,
+        prestige_level,
+        prestige_multiplier,
+        total_prestige_earnings
+    )
+    VALUES (
+        p_user_id,
+        new_prestige_level,
+        new_multiplier,
+        COALESCE((SELECT total_prestige_earnings FROM prestige_data WHERE user_id = p_user_id), 0) + p_current_clicks
+    )
+    ON CONFLICT (user_id) DO UPDATE SET
+        prestige_level = EXCLUDED.prestige_level,
+        prestige_multiplier = EXCLUDED.prestige_multiplier,
+        total_prestige_earnings = EXCLUDED.total_prestige_earnings,
+        updated_at = now();
+
+    -- Reset user's clicks
+    UPDATE profiles
+    SET current_clicks = 0
+    WHERE id = p_user_id;
+
+    -- Prepare result
+    prestige_result := json_build_object(
+        'new_prestige_level', new_prestige_level,
+        'new_multiplier', new_multiplier,
+        'total_prestige_earnings', (SELECT total_prestige_earnings FROM prestige_data WHERE user_id = p_user_id)
+    );
+
+    RETURN prestige_result;
+END;
+$$;
+
+alter function perform_prestige(uuid, bigint) owner to postgres;
+
+grant execute on function perform_prestige(uuid, bigint) to anon;
+
+grant execute on function perform_prestige(uuid, bigint) to authenticated;
+
+grant execute on function perform_prestige(uuid, bigint) to service_role;
+
+create function update_prestige_multiplier(p_user_id uuid, p_additional_multiplier double precision) returns double precision
+    security definer
+    language plpgsql
+as
+$$
+DECLARE
+    new_multiplier FLOAT;
+BEGIN
+    UPDATE prestige_data
+    SET prestige_multiplier = COALESCE(prestige_multiplier, 1.0) * p_additional_multiplier,
+        updated_at = now()
+    WHERE user_id = p_user_id
+    RETURNING prestige_multiplier INTO new_multiplier;
+
+    RETURN COALESCE(new_multiplier, p_additional_multiplier);
+END;
+$$;
+
+alter function update_prestige_multiplier(uuid, double precision) owner to postgres;
+
+grant execute on function update_prestige_multiplier(uuid, double precision) to anon;
+
+grant execute on function update_prestige_multiplier(uuid, double precision) to authenticated;
+
+grant execute on function update_prestige_multiplier(uuid, double precision) to service_role;
+
+create function purchase_meme_upgrade(p_user_id uuid, p_upgrade_id text, p_upgrade_data jsonb) returns jsonb
+    security definer
+    language plpgsql
+as
+$$
+DECLARE
+    current_upgrades JSONB;
+    updated_upgrades JSONB;
+BEGIN
+    -- Get current upgrades
+    SELECT meme_upgrades_json
+    INTO current_upgrades
+    FROM prestige_data
+    WHERE user_id = p_user_id;
+
+    -- If no prestige data exists, create it
+    IF NOT FOUND THEN
+        INSERT INTO prestige_data (user_id, meme_upgrades_json)
+        VALUES (p_user_id, '{}'::JSONB)
+        RETURNING meme_upgrades_json INTO current_upgrades;
+    END IF;
+
+    -- Update upgrades
+    updated_upgrades := jsonb_set(
+        COALESCE(current_upgrades, '{}'::JSONB),
+        ARRAY[p_upgrade_id],
+        p_upgrade_data
+    );
+
+    -- Save updates
+    UPDATE prestige_data
+    SET meme_upgrades_json = updated_upgrades,
+        updated_at = now()
+    WHERE user_id = p_user_id;
+
+    RETURN updated_upgrades;
+END;
+$$;
+
+alter function purchase_meme_upgrade(uuid, text, jsonb) owner to postgres;
+
+grant execute on function purchase_meme_upgrade(uuid, text, jsonb) to anon;
+
+grant execute on function purchase_meme_upgrade(uuid, text, jsonb) to authenticated;
+
+grant execute on function purchase_meme_upgrade(uuid, text, jsonb) to service_role;
+
+create function update_streak_status(p_user_id uuid, p_current_time timestamp with time zone DEFAULT now()) returns jsonb
+    security definer
+    language plpgsql
+as
+$$
+DECLARE
+    last_login TIMESTAMPTZ;
+    current_streak INTEGER;
+    is_active BOOLEAN;
+    result JSONB;
+BEGIN
+    -- Get current streak info
+    SELECT 
+        last_login_date,
+        streak_days,
+        is_streak_active
+    INTO 
+        last_login,
+        current_streak,
+        is_active
+    FROM users
+    WHERE id = p_user_id;
+
+    -- Calculate if streak is maintained
+    IF last_login IS NULL OR 
+       p_current_time - last_login > INTERVAL '1 day' OR 
+       NOT is_active THEN
+        -- Reset streak
+        current_streak := 1;
+        is_active := true;
+    ELSE
+        -- Increment streak if it's a new day
+        IF DATE(p_current_time) > DATE(last_login) THEN
+            current_streak := current_streak + 1;
+        END IF;
+        is_active := true;
+    END IF;
+
+    -- Update user
+    UPDATE users
+    SET streak_days = current_streak,
+        last_login_date = p_current_time,
+        is_streak_active = is_active,
+        streak_multiplier = calculate_streak_multiplier(current_streak)
+    WHERE id = p_user_id;
+
+    -- Prepare result
+    result := json_build_object(
+        'streak_days', current_streak,
+        'is_active', is_active,
+        'multiplier', calculate_streak_multiplier(current_streak)
+    );
+
+    RETURN result;
+END;
+$$;
+
+alter function update_streak_status(uuid, timestamp with time zone) owner to postgres;
+
+grant execute on function update_streak_status(uuid, timestamp with time zone) to anon;
+
+grant execute on function update_streak_status(uuid, timestamp with time zone) to authenticated;
+
+grant execute on function update_streak_status(uuid, timestamp with time zone) to service_role;
+
+create function calculate_streak_multiplier(p_streak_days integer) returns double precision
+    immutable
+    language plpgsql
+as
+$$
+BEGIN
+    -- Base multiplier calculation logic
+    -- You can modify this formula based on your game design
+    RETURN 1.0 + (p_streak_days * 0.1);
+END;
+$$;
+
+alter function calculate_streak_multiplier(integer) owner to postgres;
+
+grant execute on function calculate_streak_multiplier(integer) to anon;
+
+grant execute on function calculate_streak_multiplier(integer) to authenticated;
+
+grant execute on function calculate_streak_multiplier(integer) to service_role;
+
+create function claim_streak_reward(p_user_id uuid, p_reward_id text) returns jsonb
+    security definer
+    language plpgsql
+as
+$$
+DECLARE
+    reward_record streak_rewards%ROWTYPE;
+    user_streak INTEGER;
+    result JSONB;
+BEGIN
+    -- Get reward and verify eligibility
+    SELECT *
+    INTO reward_record
+    FROM streak_rewards
+    WHERE user_id = p_user_id AND reward_id = p_reward_id;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Reward not found';
+    END IF;
+
+    IF reward_record.claimed THEN
+        RAISE EXCEPTION 'Reward already claimed';
+    END IF;
+
+    -- Check streak requirement
+    SELECT streak_days
+    INTO user_streak
+    FROM users
+    WHERE id = p_user_id;
+
+    IF user_streak < reward_record.streak_days_required THEN
+        RAISE EXCEPTION 'Streak requirement not met';
+    END IF;
+
+    -- Mark reward as claimed
+    UPDATE streak_rewards
+    SET claimed = true,
+        claimed_at = now()
+    WHERE id = reward_record.id;
+
+    -- Apply reward based on type
+    CASE reward_record.reward_type
+        WHEN 'clicks' THEN
+            UPDATE profiles
+            SET current_clicks = current_clicks + (reward_record.reward_value->>'amount')::BIGINT
+            WHERE id = p_user_id;
+        WHEN 'multiplier' THEN
+            PERFORM update_prestige_multiplier(p_user_id, (reward_record.reward_value->>'multiplier')::FLOAT);
+        WHEN 'power_up' THEN
+            -- Handle power-up activation through power-ups system
+            PERFORM activate_power_up(
+                p_user_id,
+                reward_record.reward_value->>'power_up_type',
+                (reward_record.reward_value->>'duration')::INTEGER
+            );
+    END CASE;
+
+    -- Prepare result
+    result := json_build_object(
+        'reward_id', reward_record.reward_id,
+        'reward_type', reward_record.reward_type,
+        'reward_value', reward_record.reward_value,
+        'claimed_at', reward_record.claimed_at
+    );
+
+    RETURN result;
+END;
+$$;
+
+alter function claim_streak_reward(uuid, text) owner to postgres;
+
+grant execute on function claim_streak_reward(uuid, text) to anon;
+
+grant execute on function claim_streak_reward(uuid, text) to authenticated;
+
+grant execute on function claim_streak_reward(uuid, text) to service_role;
+
+create function create_match(p_player1_id uuid, p_player2_id uuid, p_bet_amount bigint, p_duration integer DEFAULT 60) returns jsonb
+    security definer
+    language plpgsql
+as
+$$
+DECLARE
+    new_match_id UUID;
+    result JSONB;
+BEGIN
+    -- Verify players have enough clicks for bet
+    IF p_bet_amount > 0 THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM profiles 
+            WHERE id IN (p_player1_id, p_player2_id) 
+            AND current_clicks >= p_bet_amount
+        ) THEN
+            RAISE EXCEPTION 'One or both players do not have enough clicks to place bet';
+        END IF;
+
+        -- Deduct bet amount from players
+        UPDATE profiles
+        SET current_clicks = current_clicks - p_bet_amount
+        WHERE id IN (p_player1_id, p_player2_id);
+    END IF;
+
+    -- Create match
+    INSERT INTO matches (
+        player1_id,
+        player2_id,
+        bet_amount,
+        duration,
+        status
+    )
+    VALUES (
+        p_player1_id,
+        p_player2_id,
+        p_bet_amount,
+        p_duration,
+        'pending'
+    )
+    RETURNING id INTO new_match_id;
+
+    -- Prepare result
+    SELECT json_build_object(
+        'match_id', id,
+        'player1_id', player1_id,
+        'player2_id', player2_id,
+        'bet_amount', bet_amount,
+        'duration', duration,
+        'status', status,
+        'created_at', created_at
+    ) INTO result
+    FROM matches
+    WHERE id = new_match_id;
+
+    RETURN result;
+END;
+$$;
+
+alter function create_match(uuid, uuid, bigint, integer) owner to postgres;
+
+grant execute on function create_match(uuid, uuid, bigint, integer) to anon;
+
+grant execute on function create_match(uuid, uuid, bigint, integer) to authenticated;
+
+grant execute on function create_match(uuid, uuid, bigint, integer) to service_role;
+
+create function update_match_status(p_match_id uuid, p_status text, p_clicks_p1 bigint DEFAULT NULL::bigint, p_clicks_p2 bigint DEFAULT NULL::bigint) returns jsonb
+    security definer
+    language plpgsql
+as
+$$
+DECLARE
+    match_record matches%ROWTYPE;
+    result JSONB;
+BEGIN
+    -- Get current match data
+    SELECT * INTO match_record
+    FROM matches
+    WHERE id = p_match_id;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Match not found';
+    END IF;
+
+    -- Update match
+    UPDATE matches
+    SET status = p_status,
+        clicks_p1 = COALESCE(p_clicks_p1, clicks_p1),
+        clicks_p2 = COALESCE(p_clicks_p2, clicks_p2),
+        winner_id = CASE 
+            WHEN p_status = 'completed' THEN
+                CASE 
+                    WHEN COALESCE(p_clicks_p1, clicks_p1) > COALESCE(p_clicks_p2, clicks_p2) THEN player1_id
+                    WHEN COALESCE(p_clicks_p2, clicks_p2) > COALESCE(p_clicks_p1, clicks_p1) THEN player2_id
+                    ELSE NULL -- Draw
+                END
+            ELSE winner_id
+        END,
+        updated_at = now()
+    WHERE id = p_match_id
+    RETURNING * INTO match_record;
+
+    -- If match is completed, distribute rewards
+    IF p_status = 'completed' AND match_record.bet_amount > 0 THEN
+        PERFORM calculate_match_rewards(p_match_id);
+    END IF;
+
+    -- Prepare result
+    result := json_build_object(
+        'match_id', match_record.id,
+        'status', match_record.status,
+        'clicks_p1', match_record.clicks_p1,
+        'clicks_p2', match_record.clicks_p2,
+        'winner_id', match_record.winner_id,
+        'updated_at', match_record.updated_at
+    );
+
+    RETURN result;
+END;
+$$;
+
+alter function update_match_status(uuid, text, bigint, bigint) owner to postgres;
+
+grant execute on function update_match_status(uuid, text, bigint, bigint) to anon;
+
+grant execute on function update_match_status(uuid, text, bigint, bigint) to authenticated;
+
+grant execute on function update_match_status(uuid, text, bigint, bigint) to service_role;
+
+create function create_match(p_player1_id uuid, p_player2_id uuid, p_bet_amount bigint, p_match_type text DEFAULT '1v1'::text) returns uuid
+    security definer
+    language plpgsql
+as
+$$
+DECLARE
+  v_match_id UUID;
+  v_player1_coins BIGINT;
+  v_player2_coins BIGINT;
+BEGIN
+  -- Verify players have enough coins
+  SELECT coins INTO v_player1_coins FROM profiles WHERE id = p_player1_id;
+  SELECT coins INTO v_player2_coins FROM profiles WHERE id = p_player2_id;
+  
+  IF v_player1_coins < p_bet_amount THEN
+    RAISE EXCEPTION 'Player 1 does not have enough coins';
+  END IF;
+  
+  IF v_player2_coins < p_bet_amount THEN
+    RAISE EXCEPTION 'Player 2 does not have enough coins';
+  END IF;
+  
+  -- Create match record
+  INSERT INTO pvp_matches (
+    status,
+    bet_amount,
+    match_type,
+    started_at
+  ) VALUES (
+    'pending',
+    p_bet_amount,
+    p_match_type,
+    NOW()
+  ) RETURNING id INTO v_match_id;
+  
+  -- Add participants
+  INSERT INTO match_participants (match_id, user_id, team)
+  VALUES
+    (v_match_id, p_player1_id, 1),
+    (v_match_id, p_player2_id, 2);
+  
+  -- Deduct bets from players
+  UPDATE profiles 
+  SET coins = coins - p_bet_amount
+  WHERE id IN (p_player1_id, p_player2_id);
+  
+  -- Update last_pvp_match timestamp
+  UPDATE profiles
+  SET last_pvp_match = NOW()
+  WHERE id IN (p_player1_id, p_player2_id);
+  
+  RETURN v_match_id;
+END;
+$$;
+
+alter function create_match(uuid, uuid, bigint, text) owner to postgres;
+
+grant execute on function create_match(uuid, uuid, bigint, text) to anon;
+
+grant execute on function create_match(uuid, uuid, bigint, text) to authenticated;
+
+grant execute on function create_match(uuid, uuid, bigint, text) to service_role;
+
+create function update_match_status(p_match_id uuid, p_status text, p_winner_id uuid DEFAULT NULL::uuid) returns void
+    security definer
+    language plpgsql
+as
+$$
+BEGIN
+  -- Validate status
+  IF p_status NOT IN ('pending', 'in_progress', 'completed', 'cancelled') THEN
+    RAISE EXCEPTION 'Invalid match status';
+  END IF;
+  
+  -- Update match status
+  UPDATE pvp_matches
+  SET 
+    status = p_status,
+    winner_id = CASE 
+      WHEN p_status = 'completed' THEN p_winner_id
+      ELSE winner_id
+    END,
+    ended_at = CASE 
+      WHEN p_status IN ('completed', 'cancelled') THEN NOW()
+      ELSE ended_at
+    END
+  WHERE id = p_match_id;
+  
+  -- If match is cancelled, refund bets
+  IF p_status = 'cancelled' THEN
+    UPDATE profiles p
+    SET coins = coins + m.bet_amount
+    FROM pvp_matches m
+    INNER JOIN match_participants mp ON mp.match_id = m.id
+    WHERE m.id = p_match_id AND p.id = mp.user_id;
+  END IF;
+END;
+$$;
+
+alter function update_match_status(uuid, text, uuid) owner to postgres;
+
+grant execute on function update_match_status(uuid, text, uuid) to anon;
+
+grant execute on function update_match_status(uuid, text, uuid) to authenticated;
+
+grant execute on function update_match_status(uuid, text, uuid) to service_role;
+
+create function calculate_match_rewards(p_match_id uuid)
+    returns TABLE(user_id uuid, winnings bigint)
+    security definer
+    language plpgsql
+as
+$$
+DECLARE
+  v_total_pot BIGINT;
+  v_winner_share NUMERIC;
+  v_match_type TEXT;
+  v_winner_id UUID;
+BEGIN
+  -- Get match details
+  SELECT 
+    bet_amount * (SELECT COUNT(*) FROM match_participants WHERE match_id = p_match_id),
+    match_type,
+    winner_id
+  INTO v_total_pot, v_match_type, v_winner_id
+  FROM pvp_matches
+  WHERE id = p_match_id;
+  
+  -- Set winner share based on match type
+  v_winner_share := CASE 
+    WHEN v_match_type = '1v1' THEN 0.7  -- Winner gets 70% of pot
+    WHEN v_match_type = '2v2' THEN 0.8  -- Winning team splits 80% of pot
+    ELSE 0.7
+  END;
+  
+  -- Calculate and distribute rewards
+  RETURN QUERY
+  WITH winnings_calc AS (
+    SELECT 
+      mp.user_id,
+      CASE
+        WHEN v_match_type = '1v1' AND mp.user_id = v_winner_id THEN 
+          (v_total_pot * v_winner_share)::BIGINT
+        WHEN v_match_type = '2v2' AND mp.team = (
+          SELECT team FROM match_participants WHERE user_id = v_winner_id
+        ) THEN 
+          (v_total_pot * v_winner_share / 2)::BIGINT
+        ELSE 0
+      END as winnings
+    FROM match_participants mp
+    WHERE mp.match_id = p_match_id
+  )
+  UPDATE profiles p
+  SET coins = coins + wc.winnings
+  FROM winnings_calc wc
+  WHERE p.id = wc.user_id
+  RETURNING p.id, wc.winnings;
+  
+  -- Update match participants with winnings
+  UPDATE match_participants mp
+  SET winnings = wc.winnings
+  FROM (
+    SELECT user_id, winnings 
+    FROM winnings_calc
+  ) wc
+  WHERE mp.match_id = p_match_id 
+  AND mp.user_id = wc.user_id;
+END;
+$$;
+
+alter function calculate_match_rewards(uuid) owner to postgres;
+
+grant execute on function calculate_match_rewards(uuid) to anon;
+
+grant execute on function calculate_match_rewards(uuid) to authenticated;
+
+grant execute on function calculate_match_rewards(uuid) to service_role;
+
+create function update_match_clicks(p_match_id uuid, p_clicks integer) returns void
+    security definer
+    language plpgsql
+as
+$$
+BEGIN
+  UPDATE match_participants
+  SET clicks_achieved = clicks_achieved + p_clicks
+  WHERE match_id = p_match_id
+  AND user_id = auth.uid()
+  AND EXISTS (
+    SELECT 1 FROM pvp_matches
+    WHERE id = p_match_id
+    AND status = 'in_progress'
+  );
+END;
+$$;
+
+alter function update_match_clicks(uuid, integer) owner to postgres;
+
+grant execute on function update_match_clicks(uuid, integer) to anon;
+
+grant execute on function update_match_clicks(uuid, integer) to authenticated;
+
+grant execute on function update_match_clicks(uuid, integer) to service_role;
+
+create function create_clan(p_name text, p_description text, p_image_url text DEFAULT NULL::text, p_creation_cost bigint DEFAULT 5000) returns uuid
+    security definer
+    language plpgsql
+as
+$$
+DECLARE
+  v_clan_id UUID;
+  v_user_coins BIGINT;
+BEGIN
+  -- Check if user already has a clan
+  IF EXISTS (
+    SELECT 1 FROM profiles 
+    WHERE id = auth.uid() 
+    AND clan_id IS NOT NULL
+  ) THEN
+    RAISE EXCEPTION 'User already belongs to a clan';
+  END IF;
+
+  -- Verify user has enough coins
+  SELECT coins INTO v_user_coins 
+  FROM profiles 
+  WHERE id = auth.uid();
+
+  IF v_user_coins < p_creation_cost THEN
+    RAISE EXCEPTION 'Insufficient coins to create clan';
+  END IF;
+
+  -- Create clan
+  INSERT INTO clans (
+    name,
+    description,
+    owner_id,
+    image_url,
+    member_count,
+    total_clicks
+  ) VALUES (
+    p_name,
+    p_description,
+    auth.uid(),
+    p_image_url,
+    1,
+    0
+  ) RETURNING id INTO v_clan_id;
+
+  -- Add owner as member
+  INSERT INTO clan_members (
+    clan_id,
+    user_id,
+    role,
+    contribution_clicks
+  ) VALUES (
+    v_clan_id,
+    auth.uid(),
+    'leader',
+    0
+  );
+
+  -- Update user profile
+  UPDATE profiles
+  SET 
+    clan_id = v_clan_id,
+    clan_role = 'leader',
+    coins = coins - p_creation_cost
+  WHERE id = auth.uid();
+
+  RETURN v_clan_id;
+END;
+$$;
+
+alter function create_clan(text, text, text, bigint) owner to postgres;
+
+grant execute on function create_clan(text, text, text, bigint) to anon;
+
+grant execute on function create_clan(text, text, text, bigint) to authenticated;
+
+grant execute on function create_clan(text, text, text, bigint) to service_role;
+
+create function join_clan(p_clan_id uuid) returns void
+    security definer
+    language plpgsql
+as
+$$
+DECLARE
+  v_member_count INTEGER;
+  v_max_members INTEGER := 50; -- Maximum members per clan
+BEGIN
+  -- Check if user already has a clan
+  IF EXISTS (
+    SELECT 1 FROM profiles 
+    WHERE id = auth.uid() 
+    AND clan_id IS NOT NULL
+  ) THEN
+    RAISE EXCEPTION 'User already belongs to a clan';
+  END IF;
+
+  -- Check clan member limit
+  SELECT member_count INTO v_member_count
+  FROM clans
+  WHERE id = p_clan_id;
+
+  IF v_member_count >= v_max_members THEN
+    RAISE EXCEPTION 'Clan has reached maximum member limit';
+  END IF;
+
+  -- Add user as member
+  INSERT INTO clan_members (
+    clan_id,
+    user_id,
+    role,
+    contribution_clicks
+  ) VALUES (
+    p_clan_id,
+    auth.uid(),
+    'member',
+    0
+  );
+
+  -- Update user profile
+  UPDATE profiles
+  SET 
+    clan_id = p_clan_id,
+    clan_role = 'member'
+  WHERE id = auth.uid();
+
+  -- Update clan member count
+  UPDATE clans
+  SET member_count = member_count + 1
+  WHERE id = p_clan_id;
+END;
+$$;
+
+alter function join_clan(uuid) owner to postgres;
+
+grant execute on function join_clan(uuid) to anon;
+
+grant execute on function join_clan(uuid) to authenticated;
+
+grant execute on function join_clan(uuid) to service_role;
+
+create function leave_clan() returns void
+    security definer
+    language plpgsql
+as
+$$
+DECLARE
+  v_clan_id UUID;
+  v_role TEXT;
+BEGIN
+  -- Get user's clan info
+  SELECT clan_id, clan_role INTO v_clan_id, v_role
+  FROM profiles
+  WHERE id = auth.uid();
+
+  IF v_clan_id IS NULL THEN
+    RAISE EXCEPTION 'User is not in a clan';
+  END IF;
+
+  -- Check if user is clan leader
+  IF v_role = 'leader' THEN
+    RAISE EXCEPTION 'Clan leader must transfer leadership before leaving';
+  END IF;
+
+  -- Remove from clan_members
+  DELETE FROM clan_members
+  WHERE user_id = auth.uid()
+  AND clan_id = v_clan_id;
+
+  -- Update user profile
+  UPDATE profiles
+  SET 
+    clan_id = NULL,
+    clan_role = NULL
+  WHERE id = auth.uid();
+
+  -- Update clan member count
+  UPDATE clans
+  SET member_count = member_count - 1
+  WHERE id = v_clan_id;
+END;
+$$;
+
+alter function leave_clan() owner to postgres;
+
+grant execute on function leave_clan() to anon;
+
+grant execute on function leave_clan() to authenticated;
+
+grant execute on function leave_clan() to service_role;
+
+create function transfer_clan_leadership(p_new_leader_id uuid) returns void
+    security definer
+    language plpgsql
+as
+$$
+DECLARE
+  v_clan_id UUID;
+BEGIN
+  -- Get current user's clan
+  SELECT clan_id INTO v_clan_id
+  FROM profiles
+  WHERE id = auth.uid()
+  AND clan_role = 'leader';
+
+  IF v_clan_id IS NULL THEN
+    RAISE EXCEPTION 'User is not a clan leader';
+  END IF;
+
+  -- Verify new leader is a member
+  IF NOT EXISTS (
+    SELECT 1 FROM clan_members
+    WHERE clan_id = v_clan_id
+    AND user_id = p_new_leader_id
+  ) THEN
+    RAISE EXCEPTION 'New leader must be a clan member';
+  END IF;
+
+  -- Update clan ownership
+  UPDATE clans
+  SET owner_id = p_new_leader_id
+  WHERE id = v_clan_id;
+
+  -- Update old leader role
+  UPDATE clan_members
+  SET role = 'member'
+  WHERE clan_id = v_clan_id
+  AND user_id = auth.uid();
+
+  UPDATE profiles
+  SET clan_role = 'member'
+  WHERE id = auth.uid();
+
+  -- Update new leader role
+  UPDATE clan_members
+  SET role = 'leader'
+  WHERE clan_id = v_clan_id
+  AND user_id = p_new_leader_id;
+
+  UPDATE profiles
+  SET clan_role = 'leader'
+  WHERE id = p_new_leader_id;
+END;
+$$;
+
+alter function transfer_clan_leadership(uuid) owner to postgres;
+
+grant execute on function transfer_clan_leadership(uuid) to anon;
+
+grant execute on function transfer_clan_leadership(uuid) to authenticated;
+
+grant execute on function transfer_clan_leadership(uuid) to service_role;
+
+create function update_clan_contribution(p_clicks bigint) returns void
+    security definer
+    language plpgsql
+as
+$$
+DECLARE
+  v_clan_id UUID;
+BEGIN
+  -- Get user's clan
+  SELECT clan_id INTO v_clan_id
+  FROM profiles
+  WHERE id = auth.uid();
+
+  IF v_clan_id IS NULL THEN
+    RETURN;
+  END IF;
+
+  -- Update member contribution
+  UPDATE clan_members
+  SET contribution_clicks = contribution_clicks + p_clicks
+  WHERE clan_id = v_clan_id
+  AND user_id = auth.uid();
+
+  -- Update clan total clicks
+  UPDATE clans
+  SET total_clicks = total_clicks + p_clicks
+  WHERE id = v_clan_id;
+END;
+$$;
+
+alter function update_clan_contribution(bigint) owner to postgres;
+
+grant execute on function update_clan_contribution(bigint) to anon;
+
+grant execute on function update_clan_contribution(bigint) to authenticated;
+
+grant execute on function update_clan_contribution(bigint) to service_role;
+
+create function calculate_clan_bonus(p_user_id uuid) returns numeric
+    stable
+    security definer
+    language plpgsql
+as
+$$
+DECLARE
+  v_clan_id UUID;
+  v_member_count INTEGER;
+  v_bonus NUMERIC;
+BEGIN
+  -- Get user's clan
+  SELECT clan_id INTO v_clan_id
+  FROM profiles
+  WHERE id = p_user_id;
+
+  IF v_clan_id IS NULL THEN
+    RETURN 0;
+  END IF;
+
+  -- Get clan member count
+  SELECT member_count INTO v_member_count
+  FROM clans
+  WHERE id = v_clan_id;
+
+  -- Calculate bonus (1% per active member)
+  v_bonus := v_member_count * 0.01;
+
+  RETURN v_bonus;
+END;
+$$;
+
+alter function calculate_clan_bonus(uuid) owner to postgres;
+
+grant execute on function calculate_clan_bonus(uuid) to anon;
+
+grant execute on function calculate_clan_bonus(uuid) to authenticated;
+
+grant execute on function calculate_clan_bonus(uuid) to service_role;
+
+create function generate_referral_code(p_user_id uuid) returns text
+    security definer
+    language plpgsql
+as
+$$
+DECLARE
+  v_code TEXT;
+  v_exists BOOLEAN;
+BEGIN
+  -- Check if user already has a referral code
+  SELECT EXISTS (
+    SELECT 1 FROM referrals 
+    WHERE referrer_id = p_user_id
+  ) INTO v_exists;
+
+  IF v_exists THEN
+    SELECT code INTO v_code
+    FROM referrals
+    WHERE referrer_id = p_user_id
+    LIMIT 1;
+    RETURN v_code;
+  END IF;
+
+  -- Generate unique code (first 8 chars of user_id + random 4 chars)
+  v_code := SUBSTRING(p_user_id::TEXT, 1, 8) || 
+            ARRAY_TO_STRING(ARRAY(
+              SELECT chr((65 + round(random() * 25))::integer)
+              FROM generate_series(1,4)
+            ), '');
+
+  RETURN v_code;
+END;
+$$;
+
+alter function generate_referral_code(uuid) owner to postgres;
+
+grant execute on function generate_referral_code(uuid) to anon;
+
+grant execute on function generate_referral_code(uuid) to authenticated;
+
+grant execute on function generate_referral_code(uuid) to service_role;
+
+create function process_referral_claim(p_referral_code text, p_referred_user_id uuid) returns uuid
+    security definer
+    language plpgsql
+as
+$$
+DECLARE
+  v_referral_id UUID;
+  v_referrer_id UUID;
+  v_base_reward BIGINT := 1000; -- Base reward amount
+  v_referrer_bonus NUMERIC := 0.1; -- 10% bonus for referrer
+BEGIN
+  -- Check if user has already been referred
+  IF EXISTS (
+    SELECT 1 FROM referrals
+    WHERE referred_id = p_referred_user_id
+  ) THEN
+    RAISE EXCEPTION 'User has already been referred';
+  END IF;
+
+  -- Get referrer from code
+  SELECT referrer_id INTO v_referrer_id
+  FROM referrals
+  WHERE code = p_referral_code;
+
+  IF v_referrer_id IS NULL THEN
+    RAISE EXCEPTION 'Invalid referral code';
+  END IF;
+
+  -- Create referral record
+  INSERT INTO referrals (
+    referrer_id,
+    referred_id,
+    code,
+    status
+  ) VALUES (
+    v_referrer_id,
+    p_referred_user_id,
+    p_referral_code,
+    'completed'
+  ) RETURNING id INTO v_referral_id;
+
+  -- Create reward for referred user
+  INSERT INTO referral_rewards (
+    user_id,
+    reward_type,
+    amount,
+    claimed
+  ) VALUES (
+    p_referred_user_id,
+    'coins',
+    v_base_reward,
+    false
+  );
+
+  -- Create reward for referrer
+  INSERT INTO referral_rewards (
+    user_id,
+    reward_type,
+    amount,
+    claimed
+  ) VALUES (
+    v_referrer_id,
+    'coins',
+    v_base_reward * v_referrer_bonus,
+    false
+  );
+
+  RETURN v_referral_id;
+END;
+$$;
+
+alter function process_referral_claim(text, uuid) owner to postgres;
+
+grant execute on function process_referral_claim(text, uuid) to anon;
+
+grant execute on function process_referral_claim(text, uuid) to authenticated;
+
+grant execute on function process_referral_claim(text, uuid) to service_role;
+
+create function claim_referral_reward(p_reward_id uuid) returns void
+    security definer
+    language plpgsql
+as
+$$
+DECLARE
+  v_reward_amount BIGINT;
+  v_user_id UUID;
+BEGIN
+  -- Get reward details
+  SELECT amount::BIGINT, user_id INTO v_reward_amount, v_user_id
+  FROM referral_rewards
+  WHERE id = p_reward_id
+  AND user_id = auth.uid()
+  AND NOT claimed;
+
+  IF v_reward_amount IS NULL THEN
+    RAISE EXCEPTION 'Invalid or already claimed reward';
+  END IF;
+
+  -- Update user's coins
+  UPDATE profiles
+  SET coins = coins + v_reward_amount
+  WHERE id = v_user_id;
+
+  -- Mark reward as claimed
+  UPDATE referral_rewards
+  SET 
+    claimed = true,
+    updated_at = now()
+  WHERE id = p_reward_id;
+END;
+$$;
+
+alter function claim_referral_reward(uuid) owner to postgres;
+
+grant execute on function claim_referral_reward(uuid) to anon;
+
+grant execute on function claim_referral_reward(uuid) to authenticated;
+
+grant execute on function claim_referral_reward(uuid) to service_role;
+
+create function get_referral_stats(p_user_id uuid DEFAULT auth.uid())
+    returns TABLE(total_referrals bigint, pending_referrals bigint, completed_referrals bigint, total_rewards numeric, unclaimed_rewards numeric)
+    stable
+    security definer
+    language plpgsql
+as
+$$
+BEGIN
+  RETURN QUERY
+  WITH stats AS (
+    SELECT
+      COUNT(*) as total,
+      COUNT(*) FILTER (WHERE status = 'pending') as pending,
+      COUNT(*) FILTER (WHERE status = 'completed') as completed
+    FROM referrals
+    WHERE referrer_id = p_user_id
+  ),
+  rewards AS (
+    SELECT
+      COALESCE(SUM(amount), 0) as total_amount,
+      COALESCE(SUM(amount) FILTER (WHERE NOT claimed), 0) as unclaimed_amount
+    FROM referral_rewards
+    WHERE user_id = p_user_id
+  )
+  SELECT
+    stats.total,
+    stats.pending,
+    stats.completed,
+    rewards.total_amount,
+    rewards.unclaimed_amount
+  FROM stats, rewards;
+END;
+$$;
+
+alter function get_referral_stats(uuid) owner to postgres;
+
+grant execute on function get_referral_stats(uuid) to anon;
+
+grant execute on function get_referral_stats(uuid) to authenticated;
+
+grant execute on function get_referral_stats(uuid) to service_role;
+
+create function calculate_referral_tier(p_user_id uuid DEFAULT auth.uid())
+    returns TABLE(tier_name text, bonus_multiplier numeric, next_tier_referrals integer)
+    stable
+    security definer
+    language plpgsql
+as
+$$
+DECLARE
+  v_referral_count INTEGER;
+BEGIN
+  -- Get total completed referrals
+  SELECT COUNT(*)
+  INTO v_referral_count
+  FROM referrals
+  WHERE referrer_id = p_user_id
+  AND status = 'completed';
+
+  -- Calculate tier
+  RETURN QUERY
+  SELECT
+    CASE
+      WHEN v_referral_count >= 100 THEN 'Diamond'
+      WHEN v_referral_count >= 50 THEN 'Platinum'
+      WHEN v_referral_count >= 25 THEN 'Gold'
+      WHEN v_referral_count >= 10 THEN 'Silver'
+      ELSE 'Bronze'
+    END::TEXT as tier_name,
+    CASE
+      WHEN v_referral_count >= 100 THEN 2.0
+      WHEN v_referral_count >= 50 THEN 1.5
+      WHEN v_referral_count >= 25 THEN 1.3
+      WHEN v_referral_count >= 10 THEN 1.2
+      ELSE 1.0
+    END::NUMERIC as bonus_multiplier,
+    CASE
+      WHEN v_referral_count >= 100 THEN NULL
+      WHEN v_referral_count >= 50 THEN 100 - v_referral_count
+      WHEN v_referral_count >= 25 THEN 50 - v_referral_count
+      WHEN v_referral_count >= 10 THEN 25 - v_referral_count
+      ELSE 10 - v_referral_count
+    END::INTEGER as next_tier_referrals;
+END;
+$$;
+
+alter function calculate_referral_tier(uuid) owner to postgres;
+
+grant execute on function calculate_referral_tier(uuid) to anon;
+
+grant execute on function calculate_referral_tier(uuid) to authenticated;
+
+grant execute on function calculate_referral_tier(uuid) to service_role;
+
+create function calculate_offline_earnings(p_user_id uuid, p_current_time timestamp with time zone DEFAULT now()) returns bigint
+    stable
+    security definer
+    language plpgsql
+as
+$$
+DECLARE
+  v_last_calculation TIMESTAMPTZ;
+  v_offline_rate NUMERIC;
+  v_max_duration INTEGER;
+  v_elapsed_seconds INTEGER;
+  v_earnings BIGINT;
+  v_prestige_multiplier NUMERIC;
+  v_streak_multiplier NUMERIC;
+  v_clan_bonus NUMERIC;
+BEGIN
+  -- Get user's offline earnings configuration
+  SELECT 
+    last_offline_calculation,
+    offline_earnings_rate,
+    COALESCE(max_offline_duration, 24 * 3600) -- Default 24 hours in seconds
+  INTO v_last_calculation, v_offline_rate, v_max_duration
+  FROM profiles
+  WHERE id = p_user_id;
+
+  -- Calculate elapsed time (in seconds)
+  v_elapsed_seconds := LEAST(
+    EXTRACT(EPOCH FROM (p_current_time - v_last_calculation))::INTEGER,
+    v_max_duration
+  );
+
+  -- Get multipliers
+  SELECT COALESCE(multiplier, 1.0) INTO v_prestige_multiplier
+  FROM prestige
+  WHERE user_id = p_user_id;
+
+  SELECT COALESCE(streak_multiplier, 1.0) INTO v_streak_multiplier
+  FROM profiles
+  WHERE id = p_user_id;
+
+  -- Get clan bonus
+  SELECT COALESCE(calculate_clan_bonus(p_user_id), 0) INTO v_clan_bonus;
+
+  -- Calculate earnings with all multipliers
+  v_earnings := (
+    v_offline_rate * 
+    v_elapsed_seconds * 
+    v_prestige_multiplier * 
+    v_streak_multiplier * 
+    (1 + v_clan_bonus)
+  )::BIGINT;
+
+  RETURN v_earnings;
+END;
+$$;
+
+alter function calculate_offline_earnings(uuid, timestamp with time zone) owner to postgres;
+
+grant execute on function calculate_offline_earnings(uuid, timestamp with time zone) to anon;
+
+grant execute on function calculate_offline_earnings(uuid, timestamp with time zone) to authenticated;
+
+grant execute on function calculate_offline_earnings(uuid, timestamp with time zone) to service_role;
+
+create function process_offline_earnings(p_user_id uuid DEFAULT auth.uid()) returns bigint
+    security definer
+    language plpgsql
+as
+$$
+DECLARE
+  v_earnings BIGINT;
+BEGIN
+  -- Calculate earnings
+  SELECT calculate_offline_earnings(p_user_id) INTO v_earnings;
+
+  -- Record offline earnings
+  INSERT INTO offline_earnings (
+    user_id,
+    amount
+  ) VALUES (
+    p_user_id,
+    v_earnings
+  );
+
+  -- Update user's coins and last calculation time
+  UPDATE profiles
+  SET 
+    coins = coins + v_earnings,
+    last_offline_calculation = NOW()
+  WHERE id = p_user_id;
+
+  RETURN v_earnings;
+END;
+$$;
+
+alter function process_offline_earnings(uuid) owner to postgres;
+
+grant execute on function process_offline_earnings(uuid) to anon;
+
+grant execute on function process_offline_earnings(uuid) to authenticated;
+
+grant execute on function process_offline_earnings(uuid) to service_role;
+
+create function update_streak_status(p_user_id uuid DEFAULT auth.uid()) returns void
+    security definer
+    language plpgsql
+as
+$$
+DECLARE
+  v_last_played TIMESTAMPTZ;
+  v_current_streak INTEGER;
+  v_longest_streak INTEGER;
+  v_next_milestone INTEGER;
+BEGIN
+  -- Get current streak info
+  SELECT 
+    last_played_at,
+    current_streak,
+    longest_streak,
+    next_milestone
+  INTO 
+    v_last_played,
+    v_current_streak,
+    v_longest_streak,
+    v_next_milestone
+  FROM streaks
+  WHERE user_id = p_user_id;
+
+  -- If no streak record exists, create one
+  IF v_last_played IS NULL THEN
+    INSERT INTO streaks (
+      user_id,
+      current_streak,
+      longest_streak,
+      last_played_at,
+      next_milestone
+    ) VALUES (
+      p_user_id,
+      1,
+      1,
+      NOW(),
+      5
+    );
+    RETURN;
+  END IF;
+
+  -- Check if streak is broken (more than 24 hours since last play)
+  IF NOW() - v_last_played > INTERVAL '24 hours' THEN
+    UPDATE streaks
+    SET 
+      current_streak = 1,
+      last_played_at = NOW()
+    WHERE user_id = p_user_id;
+    
+    -- Update profile streak multiplier
+    UPDATE profiles
+    SET streak_multiplier = 1.0
+    WHERE id = p_user_id;
+    
+    RETURN;
+  END IF;
+
+  -- If played within last 24 hours but on a different day, increment streak
+  IF DATE(NOW()) > DATE(v_last_played) THEN
+    UPDATE streaks
+    SET 
+      current_streak = current_streak + 1,
+      longest_streak = GREATEST(longest_streak, current_streak + 1),
+      last_played_at = NOW(),
+      next_milestone = 
+        CASE 
+          WHEN current_streak + 1 >= next_milestone THEN next_milestone * 2
+          ELSE next_milestone
+        END
+    WHERE user_id = p_user_id;
+
+    -- Update profile streak multiplier (5% bonus per 5 days, max 100%)
+    UPDATE profiles
+    SET streak_multiplier = LEAST(2.0, 1.0 + (FLOOR((current_streak + 1) / 5) * 0.05))
+    WHERE id = p_user_id;
+  ELSE
+    -- Just update last played time
+    UPDATE streaks
+    SET last_played_at = NOW()
+    WHERE user_id = p_user_id;
+  END IF;
+END;
+$$;
+
+alter function update_streak_status(uuid) owner to postgres;
+
+grant execute on function update_streak_status(uuid) to anon;
+
+grant execute on function update_streak_status(uuid) to authenticated;
+
+grant execute on function update_streak_status(uuid) to service_role;
+
+create function check_power_ups(p_user_id uuid DEFAULT auth.uid())
+    returns TABLE(power_up_id uuid, type text, status text, time_remaining interval)
+    stable
+    security definer
+    language plpgsql
+as
+$$
+BEGIN
+  RETURN QUERY
+  WITH power_up_status AS (
+    -- Deactivate expired power-ups
+    UPDATE power_ups
+    SET 
+      is_active = false,
+      updated_at = NOW()
+    WHERE 
+      user_id = p_user_id
+      AND is_active = true
+      AND active_until < NOW()
+    RETURNING id
+  )
+  SELECT 
+    pu.id,
+    pu.type,
+    CASE 
+      WHEN NOT pu.is_active AND NOW() >= pu.next_available THEN 'ready'
+      WHEN pu.is_active THEN 'active'
+      ELSE 'cooldown'
+    END::TEXT as status,
+    CASE
+      WHEN pu.is_active THEN pu.active_until - NOW()
+      WHEN NOW() < pu.next_available THEN pu.next_available - NOW()
+      ELSE '0 seconds'::INTERVAL
+    END as time_remaining
+  FROM power_ups pu
+  WHERE pu.user_id = p_user_id;
+END;
+$$;
+
+alter function check_power_ups(uuid) owner to postgres;
+
+grant execute on function check_power_ups(uuid) to anon;
+
+grant execute on function check_power_ups(uuid) to authenticated;
+
+grant execute on function check_power_ups(uuid) to service_role;
+
+create function calculate_total_multiplier(p_user_id uuid DEFAULT auth.uid()) returns numeric
+    stable
+    security definer
+    language plpgsql
+as
+$$
+DECLARE
+  v_base_multiplier NUMERIC := 1.0;
+  v_prestige_multiplier NUMERIC;
+  v_streak_multiplier NUMERIC;
+  v_power_up_multiplier NUMERIC := 1.0;
+  v_clan_bonus NUMERIC;
+BEGIN
+  -- Get prestige multiplier
+  SELECT COALESCE(multiplier, 1.0) INTO v_prestige_multiplier
+  FROM prestige
+  WHERE user_id = p_user_id;
+
+  -- Get streak multiplier
+  SELECT COALESCE(streak_multiplier, 1.0) INTO v_streak_multiplier
+  FROM profiles
+  WHERE id = p_user_id;
+
+  -- Get active power-up multipliers
+  SELECT COALESCE(PRODUCT(multiplier), 1.0) INTO v_power_up_multiplier
+  FROM power_ups
+  WHERE user_id = p_user_id
+  AND is_active = true;
+
+  -- Get clan bonus
+  SELECT COALESCE(calculate_clan_bonus(p_user_id), 0) INTO v_clan_bonus;
+
+  -- Calculate total multiplier
+  RETURN v_base_multiplier * 
+         v_prestige_multiplier * 
+         v_streak_multiplier * 
+         v_power_up_multiplier *
+         (1 + v_clan_bonus);
+END;
+$$;
+
+alter function calculate_total_multiplier(uuid) owner to postgres;
+
+grant execute on function calculate_total_multiplier(uuid) to anon;
+
+grant execute on function calculate_total_multiplier(uuid) to authenticated;
+
+grant execute on function calculate_total_multiplier(uuid) to service_role;
+
+create function handle_new_user() returns trigger
+    security definer
+    language plpgsql
+as
+$$
+BEGIN
+    -- Create a profile for the new user
+    INSERT INTO public.profiles (id, username, created_at, updated_at)
+    VALUES (NEW.id, NEW.raw_user_meta_data->>'preferred_username', now(), now());
+    
+    -- Create initial prestige data
+    INSERT INTO public.prestige_data (user_id, prestige_level, prestige_multiplier)
+    VALUES (NEW.id, 0, 1.0);
+    
+    -- Initialize streak data
+    INSERT INTO public.streaks (user_id, current_streak, longest_streak)
+    VALUES (NEW.id, 0, 0);
+    
+    -- Initialize wallet fingerprint if wallet address is provided
+    IF NEW.raw_user_meta_data->>'wallet_address' IS NOT NULL THEN
+        INSERT INTO public.wallet_fingerprints (wallet_address)
+        VALUES (NEW.raw_user_meta_data->>'wallet_address')
+        ON CONFLICT (wallet_address) DO NOTHING;
+    END IF;
+    
+    RETURN NEW;
+END;
+$$;
+
+alter function handle_new_user() owner to postgres;
+
+grant execute on function handle_new_user() to anon;
+
+grant execute on function handle_new_user() to authenticated;
+
+grant execute on function handle_new_user() to service_role;
+
+create function handle_user_activity() returns trigger
+    security definer
+    language plpgsql
+as
+$$
+BEGIN
+  -- Update streak status
+  PERFORM update_streak_status(NEW.id);
+  RETURN NEW;
+END;
+$$;
+
+alter function handle_user_activity() owner to postgres;
+
+create trigger on_user_activity
+    after update
+        of current_clicks
+    on profiles
+    for each row
+    when (new.current_clicks > old.current_clicks)
+execute procedure handle_user_activity();
+
+grant execute on function handle_user_activity() to anon;
+
+grant execute on function handle_user_activity() to authenticated;
+
+grant execute on function handle_user_activity() to service_role;
+
+create function handle_power_up_activation() returns trigger
+    security definer
+    language plpgsql
+as
+$$
+BEGIN
+  IF NEW.is_active AND NOT OLD.is_active THEN
+    -- Set active_until based on duration
+    NEW.active_until := NOW() + NEW.duration;
+    -- Set next_available based on cooldown
+    NEW.next_available := NOW() + NEW.duration + NEW.cooldown;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+alter function handle_power_up_activation() owner to postgres;
+
+create trigger on_power_up_activation
+    before update
+    on power_ups
+    for each row
+    when (new.is_active IS DISTINCT FROM old.is_active)
+execute procedure handle_power_up_activation();
+
+grant execute on function handle_power_up_activation() to anon;
+
+grant execute on function handle_power_up_activation() to authenticated;
+
+grant execute on function handle_power_up_activation() to service_role;
+
+create function handle_match_completion() returns trigger
+    security definer
+    language plpgsql
+as
+$$
+BEGIN
+  IF NEW.status = 'completed' AND OLD.status != 'completed' THEN
+    -- Calculate and distribute rewards
+    PERFORM calculate_match_rewards(NEW.id);
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+alter function handle_match_completion() owner to postgres;
+
+create trigger on_match_completion
+    after update
+    on pvp_matches
+    for each row
+    when (new.status = 'completed'::text AND old.status <> 'completed'::text)
+execute procedure handle_match_completion();
+
+grant execute on function handle_match_completion() to anon;
+
+grant execute on function handle_match_completion() to authenticated;
+
+grant execute on function handle_match_completion() to service_role;
+
+create function verify_wallet_ownership(p_wallet_address text, p_signature text, p_message text) returns boolean
+    security definer
+    language plpgsql
+as
+$$
+BEGIN
+    -- This is a placeholder for actual wallet verification logic
+    -- In a real implementation, this would verify the signature against the message
+    -- using the appropriate blockchain's cryptographic functions
+    
+    -- For now, we'll just check if the wallet address exists
+    RETURN EXISTS (
+        SELECT 1 
+        FROM public.wallet_fingerprints 
+        WHERE wallet_address = p_wallet_address
+    );
+END;
+$$;
+
+alter function verify_wallet_ownership(text, text, text) owner to postgres;
+
+grant execute on function verify_wallet_ownership(text, text, text) to anon;
+
+grant execute on function verify_wallet_ownership(text, text, text) to authenticated;
+
+grant execute on function verify_wallet_ownership(text, text, text) to service_role;
+
+create function link_wallet_to_user(p_wallet_address text) returns boolean
+    security definer
+    language plpgsql
+as
+$$
+BEGIN
+    -- Update the user's wallet address
+    UPDATE auth.users
+    SET 
+        raw_user_meta_data = jsonb_set(
+            COALESCE(raw_user_meta_data, '{}'::jsonb),
+            '{wallet_address}',
+            to_jsonb(p_wallet_address)
+        )
+    WHERE id = auth.uid();
+    
+    -- Create or update wallet fingerprint
+    INSERT INTO public.wallet_fingerprints (wallet_address)
+    VALUES (p_wallet_address)
+    ON CONFLICT (wallet_address) 
+    DO UPDATE SET 
+        transaction_count = wallet_fingerprints.transaction_count + 1,
+        updated_at = now();
+    
+    RETURN FOUND;
+END;
+$$;
+
+alter function link_wallet_to_user(text) owner to postgres;
+
+grant execute on function link_wallet_to_user(text) to anon;
+
+grant execute on function link_wallet_to_user(text) to authenticated;
+
+grant execute on function link_wallet_to_user(text) to service_role;
+
+create function get_auth_status()
+    returns TABLE(user_id uuid, wallet_address text, is_wallet_verified boolean, last_login timestamp with time zone, session_count integer)
+    security definer
+    language plpgsql
+as
+$$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        u.id,
+        u.raw_user_meta_data->>'wallet_address' as wallet_address,
+        COALESCE(w.risk_score = 0, false) as is_wallet_verified,
+        u.last_sign_in_at as last_login,
+        COUNT(s.id)::INT as session_count
+    FROM auth.users u
+    LEFT JOIN public.wallet_fingerprints w ON w.wallet_address = u.raw_user_meta_data->>'wallet_address'
+    LEFT JOIN public.sessions s ON s.user_id = u.id
+    WHERE u.id = auth.uid()
+    GROUP BY u.id, w.risk_score;
+END;
+$$;
+
+alter function get_auth_status() owner to postgres;
+
+grant execute on function get_auth_status() to anon;
+
+grant execute on function get_auth_status() to authenticated;
+
+grant execute on function get_auth_status() to service_role;
+
+create function handle_user_deletion() returns trigger
+    security definer
+    language plpgsql
+as
+$$
+BEGIN
+    -- End all active sessions
+    UPDATE public.sessions
+    SET 
+        ended_at = now(),
+        is_active = false,
+        updated_at = now()
+    WHERE user_id = OLD.id;
+    
+    -- Clean up user data
+    DELETE FROM public.profiles WHERE id = OLD.id;
+    DELETE FROM public.prestige_data WHERE user_id = OLD.id;
+    DELETE FROM public.streaks WHERE user_id = OLD.id;
+    DELETE FROM public.power_ups WHERE user_id = OLD.id;
+    DELETE FROM public.user_upgrades WHERE user_id = OLD.id;
+    DELETE FROM public.clicks WHERE user_id = OLD.id;
+    DELETE FROM public.offline_earnings WHERE user_id = OLD.id;
+    DELETE FROM public.referrals WHERE referrer_id = OLD.id OR referred_id = OLD.id;
+    DELETE FROM public.referral_rewards WHERE user_id = OLD.id;
+    
+    -- Remove from clans
+    UPDATE public.clans 
+    SET owner_id = NULL 
+    WHERE owner_id = OLD.id;
+    
+    DELETE FROM public.clan_members WHERE user_id = OLD.id;
+    
+    -- Clean up matches
+    UPDATE public.matches 
+    SET winner_id = NULL 
+    WHERE winner_id = OLD.id;
+    
+    DELETE FROM public.match_participants WHERE user_id = OLD.id;
+    
+    RETURN OLD;
+END;
+$$;
+
+alter function handle_user_deletion() owner to postgres;
+
+grant execute on function handle_user_deletion() to anon;
+
+grant execute on function handle_user_deletion() to authenticated;
+
+grant execute on function handle_user_deletion() to service_role;
+
+create function update_updated_at_column() returns trigger
+    language plpgsql
+as
+$$
+BEGIN
+    NEW.updated_at = TIMEZONE('utc'::text, NOW());
+    RETURN NEW;
+END;
+$$;
+
+alter function update_updated_at_column() owner to postgres;
+
+create trigger update_user_game_state_updated_at
+    before update
+    on user_game_state
+    for each row
+execute procedure update_updated_at_column();
+
+create trigger update_prestige_state_updated_at
+    before update
+    on prestige_state
+    for each row
+execute procedure update_updated_at_column();
+
+create trigger update_referral_stats_updated_at
+    before update
+    on referral_stats
+    for each row
+execute procedure update_updated_at_column();
+
+create trigger update_referral_leaderboard_updated_at
+    before update
+    on referral_leaderboard
+    for each row
+execute procedure update_updated_at_column();
+
+create trigger update_user_profiles_updated_at
+    before update
+    on user_profiles
+    for each row
+execute procedure update_updated_at_column();
+
+create trigger update_game_statistics_updated_at
+    before update
+    on game_statistics
+    for each row
+execute procedure update_updated_at_column();
+
+grant execute on function update_updated_at_column() to anon;
+
+grant execute on function update_updated_at_column() to authenticated;
+
+grant execute on function update_updated_at_column() to service_role;
+
+create function increment_clicks(user_id_param uuid) returns void
+    language plpgsql
+as
+$$
+BEGIN
+  UPDATE game_statistics
+  SET total_clicks = total_clicks + 1
+  WHERE user_id = user_id_param;
+END;
+$$;
+
+alter function increment_clicks(uuid) owner to postgres;
+
+grant execute on function increment_clicks(uuid) to anon;
+
+grant execute on function increment_clicks(uuid) to authenticated;
+
+grant execute on function increment_clicks(uuid) to service_role;
+
+create function increment_power_ups_used(user_id_param uuid) returns integer
+    language plpgsql
+as
+$$
+DECLARE
+  current_count integer;
+BEGIN
+  UPDATE game_statistics
+  SET power_ups_used = power_ups_used + 1
+  WHERE user_id = user_id_param
+  RETURNING power_ups_used INTO current_count;
+  
+  RETURN current_count;
+END;
+$$;
+
+alter function increment_power_ups_used(uuid) owner to postgres;
+
+grant execute on function increment_power_ups_used(uuid) to anon;
+
+grant execute on function increment_power_ups_used(uuid) to authenticated;
+
+grant execute on function increment_power_ups_used(uuid) to service_role;
+
+create function update_leaderboard() returns trigger
+    language plpgsql
+as
+$$
+BEGIN
+  -- Update or insert into leaderboard
+  INSERT INTO public.leaderboard (
+    user_id,
+    username,
+    clan_tag,
+    clicks,
+    prestige_level,
+    streak_days,
+    pvp_wins,
+    updated_at
+  )
+  VALUES (
+    NEW.id,
+    NEW.username,
+    (SELECT tag FROM public.clans WHERE id = NEW.clan_id),
+    NEW.total_clicks,
+    NEW.prestige_level,
+    NEW.streak_days,
+    NEW.pvp_wins,
+    NOW()
+  )
+  ON CONFLICT (user_id) 
+  DO UPDATE SET
+    username = EXCLUDED.username,
+    clan_tag = EXCLUDED.clan_tag,
+    clicks = EXCLUDED.clicks,
+    prestige_level = EXCLUDED.prestige_level,
+    streak_days = EXCLUDED.streak_days,
+    pvp_wins = EXCLUDED.pvp_wins,
+    updated_at = NOW();
+  RETURN NEW;
+END;
+$$;
+
+alter function update_leaderboard() owner to postgres;
+
+create trigger update_leaderboard_trigger
+    after insert or update
+    on users
+    for each row
+execute procedure update_leaderboard();
+
+grant execute on function update_leaderboard() to anon;
+
+grant execute on function update_leaderboard() to authenticated;
+
+grant execute on function update_leaderboard() to service_role;

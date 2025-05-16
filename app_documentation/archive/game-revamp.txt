@@ -1,0 +1,637 @@
+Okay, this is a significant pivot! Moving away from blockchain (for now) and NFTs (for now) changes the immediate implementation focus but keeps the fun core alive. We'll emphasize in-game currency, cosmetics, and a robust backend to track everything for that future airdrop.
+
+Let's revamp "ClickyoMama" with these new parameters, focusing on variety, addictive loops, and an energetic feel, with all game parameters designed to be configurable from your Supabase DB and potentially cached/managed with Redis.
+
+ClickyoMama - Revamped Product Requirements Document (PRD)
+Table of Contents
+
+Overview & Vision
+
+In-Game Economy & Future $MAMA Airdrop
+
+User Accounts & Security
+
+Core Gameplay Mechanics: The Clicker Reimagined
+
+Mini-Games & Daily Engagements
+
+Cosmetics & Customization System (The "Glam Cave")
+
+Multiplayer & Social Mayhem
+
+The "Yo Mama" Persona: Heart of the Game
+
+UI/UX: Energetic, Responsive & Juicy
+
+Power-Ups & Boosters
+
+Prestige & Long-Term Progression
+
+Referral Program: Spread the Sass
+
+In-Game "Savings Account" (Staking Mock-up)
+
+Technical Stack & Infrastructure (Supabase & Redis Focus)
+
+Roadmap & Milestones (Revised)
+
+Risk Mitigation (Revised)
+
+1. Overview & Vision
+
+Project Name: ClickyoMama
+Genre: Hyper-Addictive Meme Clicker & Idle Game
+Platform: Web (Desktop & Mobile Responsive)
+Target Audience: Meme lovers, casual & idle game players, community-driven individuals, future crypto enthusiasts.
+Core Value Proposition:
+
+Endlessly Entertaining Clicks: A vibrant, dynamic clicking experience that's easy to learn, hard to master.
+
+Rich Customization: Personalize your game with hilarious Yo Mama skins, themes, clicker styles, and more, all earnable with in-game currency.
+
+Community & Competition: Engage in friendly rivalries, climb leaderboards, and join "Families" (Clans).
+
+Daily Surprises & Events: Fresh content, mini-games, and challenges to keep players coming back.
+
+Future $MAMA Token Rewards: All in-game "Mama Points" earned will contribute to a future airdrop of the $MAMA token, rewarding early engagement. (No blockchain interaction for users at this stage).
+
+2. In-Game Economy & Future $MAMA Airdrop
+Primary In-Game Currency
+
+Name: Mama Points (MP)
+
+Acquisition:
+
+Clicking the primary target.
+
+Completing "Chores" (dynamic click objectives).
+
+Winning PvP Click-Offs.
+
+Mini-game rewards.
+
+Daily login bonuses & streak rewards.
+
+Completing Daily/Weekly Quests.
+
+Referral bonuses.
+
+Offline earnings.
+
+Prestige bonuses.
+
+Utility:
+
+Purchasing cosmetic items (Yo Mama skins, themes, clicker skins, button styles).
+
+Buying temporary power-ups.
+
+Upgrading core click power & offline earning rates.
+
+Entering PvP matches or special event modes.
+
+Contributing to "Family" goals.
+
+DB Config (Supabase): initial_mp_balance, base_click_reward_mp, chore_X_mp_reward.
+
+Future $MAMA Token Airdrop
+
+All Mama Points earned by users will be tracked meticulously in the Supabase database.
+
+At a future date (TBD, outlined in Roadmap Phase X), these accumulated Mama Points will be used as a basis for a proportional airdrop of the official $MAMA token if/when the project transitions to blockchain.
+
+Key Principle: The more you engage and earn in-game now, the larger your potential future $MAMA airdrop.
+
+DB Config (Supabase): User table with total_accumulated_mp, last_activity_timestamp.
+
+3. User Accounts & Security
+Authentication
+
+Methods:
+
+Email/Password (Supabase Auth).
+
+Social Logins (Google, Discord, Twitter - via Supabase Auth).
+
+Session Management: Redis for fast session validation and JWT handling coordinated with Supabase.
+
+DB Config (Supabase): User profiles, preferences, linked social accounts.
+
+Security & Anti-Cheat
+
+Rate Limiting: Redis for API call limits (e.g., click submissions per second).
+
+DB Config (Redis/Supabase): max_clicks_per_second, api_request_limit_per_minute.
+
+Server-Side Validation: All MP earnings, purchases, and game state changes validated on the backend (Supabase Functions).
+
+Anomaly Detection: Scripts to flag unusual earning patterns (e.g., sudden massive MP gain).
+
+IP/Device Fingerprinting (Basic): To discourage mass botting. User appeals for false positives.
+
+DB Config (Supabase): max_accounts_per_ip_soft_limit.
+
+4. Core Gameplay Mechanics: The Clicker Reimagined
+The Main Click Area: "Mama's Domain"
+
+A visually dynamic area (e.g., kitchen, living room, garden) that changes based on selected themes or special events.
+
+Primary Click Target: A prominent, animated "Yo Mama" character or a thematic object (e.g., a giant cookie jar, a dusty trophy).
+
+DB Config: base_mp_per_click.
+
+"Mama's Chores" - Dynamic Objectives:
+
+Periodically, small, interactive "chore" icons appear on screen for a limited time (e.g., "Swat the Fly," "Wipe the Spill," "Find Mama's Glasses").
+
+Clicking/interacting with these yields bonus MP or a chance for a power-up.
+
+Variety: Different chores require different interactions (e.g., rapid tap, drag & drop, hold).
+
+DB Config (Supabase): chore_id, name, description, interaction_type, base_reward_mp, spawn_chance_per_minute, duration_on_screen_sec, cooldown_between_same_chore_sec.
+
+Upgrades (Purchased with MP)
+
+Click Power: Increase MP earned per click on the primary target.
+
+DB Config: click_power_level_costs_mp[], click_power_level_bonus_mp[].
+
+Chore Efficiency: Increase MP earned from completing chores.
+
+DB Config: chore_efficiency_level_costs_mp[], chore_efficiency_bonus_pct[].
+
+Offline Earnings Rate: Increase MP earned per hour while offline.
+
+DB Config: offline_earning_level_costs_mp[], offline_earning_bonus_pct_per_hour[].
+
+Max Offline Time: 8 hours (configurable).
+
+DB Config: max_offline_accumulation_hours.
+
+Streak System
+
+Daily Login Streak: Consecutive days logging in.
+
+Rewards: Increasing MP bonuses, mystery boxes, specific power-ups.
+
+DB Config (Supabase): daily_streak_day_X_reward_type, daily_streak_day_X_reward_value.
+
+Example:
+
+Day 3: +10% MP earned for 24h.
+
+Day 7: Standard Mystery Box.
+
+Day 30: Premium Mystery Box + Exclusive "30-Day Devotee" Badge.
+
+Active Play Streak: Completing X click cycles/chores within Y hours.
+
+DB Config: active_play_streak_target_actions, active_play_streak_time_window_hours, active_play_streak_reward_mp.
+
+5. Mini-Games & Daily Engagements
+Variety Mini-Games (Unlocked via Progression/Time-Gated)
+
+Accessed via a "Rec Room" or "Activity Center" button. Small MP entry fee, bigger rewards.
+
+"Whack-A-Roach": Fast-paced tapping game. Tap roaches, avoid tapping Mama's slippers.
+
+DB Config: whack_a_roach_duration_sec, roach_points, slipper_penalty_points, entry_fee_mp.
+
+"Laundry Sort Frenzy": Drag and drop colored clothes into matching baskets before time runs out. Speed and accuracy count.
+
+DB Config: laundry_sort_duration_sec, points_per_correct_item, time_bonus_thresholds_mp.
+
+"Sass Synthesis": Combine word fragments to create the "Ultimate Yo Mama Joke." Judged by a (comedic) AI or community votes for daily best.
+
+DB Config: sass_synthesis_word_pool_ids, daily_winner_reward_mp.
+
+"Coupon Clipper Extreme": Rapidly "clip" (click) falling coupon icons, avoid "bills."
+
+DB Config: coupon_clipper_duration_sec, coupon_value_mp, bill_penalty_mp.
+
+Daily & Weekly Quests
+
+A list of achievable tasks.
+
+Examples: "Click 1000 times," "Complete 5 Chores," "Win 1 Click-Off," "Use 3 Power-Ups," "Login 3 Days in a Row."
+
+Rewards: MP, small bundles of Power-Ups, Mystery Box Keys.
+
+DB Config (Supabase): quest_id, type (daily/weekly), objective_description_key, target_value, reward_mp, reward_item_id, reward_quantity. Refreshed server-side.
+
+Mystery Boxes
+
+Earned via streaks, quests, rare drops from chores, or purchased with a large sum of MP.
+
+Tiers: Common, Uncommon, Rare, Epic.
+
+Contents: Bundles of MP, unique Power-Ups, Cosmetic Item Vouchers (redeemable for a random cosmetic of a certain rarity), exclusive temporary Boosters.
+
+DB Config (Supabase): mystery_box_tier_id, cost_mp (if buyable), loot_table_id (linking to item probabilities). Redis for managing daily purchase limits.
+
+6. Cosmetics & Customization System (The "Glam Cave")
+
+A dedicated in-game shop/interface called "Mama's Glam Cave."
+
+All items purchased with Mama Points (MP).
+
+NO real money transactions for cosmetics at this stage.
+
+Types of Cosmetics
+
+Yo Mama Character Outfits/Skins:
+
+Examples: "Chef Mama," "Disco Mama," "Gardening Mama," "Superhero Mama," "Diamond Hands Apron Mama."
+
+Changes Yo Mama's appearance in the main click area and potentially her voice lines/animations.
+
+DB Config: mama_skin_id, name, description, rarity (common, rare, epic), cost_mp, asset_url_sprite_sheet.
+
+Clicker Tool Skins:
+
+Change the visual of what the player "clicks with" (if a visual cursor/tool is shown).
+
+Examples: "Golden Spoon," "Feather Duster of Doom," "Rolling Pin of Righteousness," "Fly Swatter Supreme."
+
+DB Config: clicker_skin_id, name, cost_mp, asset_url_icon.
+
+Background Themes:
+
+Change the entire backdrop of "Mama's Domain."
+
+Examples: "Retro Kitchen," "Zen Garden," "Messy Teenager's Room (Uh Oh!)," "Sparkling Clean Palace."
+
+DB Config: theme_id, name, cost_mp, asset_url_background.
+
+Click Button Styles:
+
+Customize the appearance of the main click button/area.
+
+Examples: "Flaming Button," "Gem-Encrusted Button," "Cookie Button."
+
+DB Config: button_style_id, name, cost_mp, css_properties_or_asset_url.
+
+Profile Avatars & Borders:
+
+For use in leaderboards and social interactions.
+
+Earned through achievements or purchased.
+
+DB Config: avatar_id, border_id, name, cost_mp_or_achievement_unlock_condition.
+
+"Roast" Voice Packs (for Yo Mama):
+
+Unlock different sets of humorous voice lines for Yo Mama.
+
+Examples: "Classic Roasts," "Wholesome Heckles," "Crypto Bro Banter."
+
+DB Config: voice_pack_id, name, cost_mp, associated_audio_file_ids.
+
+Acquisition
+
+Direct purchase with MP in the Glam Cave.
+
+Rare chance from high-tier Mystery Boxes (as items or vouchers).
+
+Special event rewards.
+
+7. Multiplayer & Social Mayhem
+"Families" (Clans/Guilds)
+
+Players can create or join Families.
+
+Features:
+
+Family Name & Crest (pre-set options).
+
+Member List & Roles (Leader, Officer, Member).
+
+Private Family Chat.
+
+Family-wide announcements by leaders.
+
+Family Perks (Passive Bonuses):
+
+Small % MP gain boost for all members based on Family level (level up by collective activity/donations of MP).
+
+DB Config: family_max_members, family_level_xp_requirements[], family_level_perk_mp_boost_pct[].
+
+Family Collaborative Goals/Events:
+
+"Weekly Family Bake-Off": Collective clicks/chores goal for Family-wide rewards.
+
+DB Config: family_event_id, target_metric, target_value, reward_pool_mp.
+
+Leaderboards
+
+Managed with Redis Sorted Sets for performance, backed by Supabase.
+
+Categories:
+
+Global Top Clickers (Total MP Earned).
+
+Global Prestige Leaders.
+
+Weekly MP Earners.
+
+Family Leaderboard (Total Family MP).
+
+PvP "Click-Off" Champions (Wins/Rating).
+
+Display: Top 100, player's own rank. Rewards for top weekly/seasonal performers (MP, exclusive badges).
+
+DB Config: leaderboard_id, reset_interval (none, weekly, monthly), reward_structure_top_X.
+
+PvP: "Click-Off Duels"
+
+1v1 Mode:
+
+Players bet a small amount of MP.
+
+Timed Challenge: Who can click the most/complete mini-chore sequences fastest in 30-60 seconds.
+
+Winner takes ~90% of the pot (configurable rake).
+
+DB Config: pvp_duel_duration_sec, min_bet_mp, max_bet_mp, house_rake_pct.
+
+Asynchronous "Roast Tag":
+
+Send a pre-set (or community-moderated custom) "Yo Mama" roast to another player.
+
+They get a notification and can "roast back."
+
+No direct MP reward, but unlocks "Roast Master" badges for X successful roasts sent/received.
+
+DB Config: available_roast_texts[], roast_tag_cooldown_hours.
+
+In-Game Chat
+
+Global Chat.
+
+Family Chat.
+
+(Future) Direct Messages.
+
+Moderation tools (Supabase Functions for filtering, muting, banning). Yo Mama character can randomly drop comments/roasts in Global Chat.
+
+8. The "Yo Mama" Persona: Heart of the Game
+Personality Traits
+
+Sassy, witty, dramatic, surprisingly wholesome at times, fiercely protective of her "clickers."
+
+Loves a good (clean) joke, but isn't afraid to lay down a "sick burn."
+
+Full of unsolicited advice and quirky sayings.
+
+Signature Roasts (Examples):
+
+"Yo clicks so slow, molasses overtakes you in a marathon."
+
+"You call that a streak? My grandma knits faster than you click!"
+
+"Is your mouse broken, or are you just thinking about what to click next... since yesterday?"
+
+Compliments (When you do well):
+
+"Now THAT'S how you click! Mama's proud!"
+
+"Look at you go! You're a clickin' machine!"
+
+"Sweetheart, you're on fire! (Don't actually set anything on fire.)"
+
+Visual Design & Animations
+
+Style: Vibrant, expressive, slightly exaggerated cartoon/comic style. Could be pixel art if preferred, but expressive is key.
+
+Base Look: Iconic elements like hair rollers, an apron (customizable via skins!), comfy slippers.
+
+Dynamic Reactions:
+
+Animated responses to player actions: eye-rolls for slow clicks, cheers for big wins/streaks, tapping foot impatiently, offering a virtual cookie.
+
+Changes expression based on "Mama's Mood" (see below).
+
+DB Config: mama_animation_trigger_event_X_url.
+
+"Mama's Mood" System
+
+A visual indicator (e.g., a mood bar, facial expression changes on the main character).
+
+Influenced by:
+
+Player's clicking speed (too slow = grumpy).
+
+Completing chores quickly (happy).
+
+Winning/losing PvP.
+
+Using certain power-ups.
+
+Effects:
+
+Happy Mama: Slightly increased MP drops, more encouraging/funny voice lines, higher chance of "Bonus Chore" spawns.
+
+Neutral Mama: Standard gameplay.
+
+Grumpy Mama: Slightly reduced MP drops (or no effect, just harsher roasts), more sarcastic voice lines, chance of a "Chore Overload" mini-event (many easy chores pop up for a short burst).
+
+DB Config: mood_thresholds_for_happy/grumpy, mp_bonus_pct_happy_mama, chore_spawn_rate_modifier_mood_X.
+
+9. UI/UX: Energetic, Responsive & Juicy
+Key Principles
+
+Clarity: Easy to understand what to do and where to find things.
+
+Responsiveness: Fast load times, smooth transitions, immediate feedback to clicks.
+
+"Juiciness":
+
+Visual Feedback: Buttons pop, numbers fly out, particle effects on click, screen shake for big events.
+
+Audio Feedback: Satisfying click sounds, jingles for rewards, distinct sounds for power-ups, and of course, Yo Mama's voice.
+
+Mobile-First Design: Ensure excellent playability on various screen sizes.
+
+Accessibility: Consider color contrast, font sizes, and alternative input methods where feasible.
+
+Specific Elements
+
+Animated Yo Mama: Constantly present and reacting.
+
+Evolving Click Button/Area: Visual changes as players upgrade or hit milestones (e.g., button gets a golden sheen after 1M total clicks).
+
+Dynamic Toasts & Notifications:
+
+"You just unlocked 'Laundry Sort Frenzy'! Go check it out!"
+
+"Your offline earnings are ready! Mama kept the couch warm for ya."
+
+Yo Mama: "Another power-up? You spoil me... and yourself!"
+
+Progress Bars: Everywhere! For streaks, quests, upgrade levels, event progress.
+
+10. Power-Ups & Boosters
+Temporary Power-Ups (Purchased with MP or found in Mystery Boxes)
+
+"Caffeine Rush" (e.g., 2x MP): Doubles MP earned from clicks & chores for 30-60 seconds.
+
+DB Config: power_up_caffeine_duration_sec, power_up_caffeine_multiplier, cost_mp.
+
+"Auto-Mama-Clicker": Automatically clicks the primary target at a set rate for 1-2 minutes.
+
+DB Config: power_up_auto_click_duration_sec, auto_click_rate_cps, cost_mp.
+
+"Chore Magnet": Increases spawn rate of "Mama's Chores" for 5 minutes.
+
+DB Config: power_up_chore_magnet_duration_sec, chore_spawn_multiplier, cost_mp.
+
+"Streak Shield": Protects your daily login streak for one missed day (consumable).
+
+DB Config: power_up_streak_shield_cost_mp.
+
+Boosters (Rarer, from events or high-tier Mystery Boxes)
+
+"24hr MP Doubler": All MP gains doubled for 24 real-time hours.
+
+"Offline Earnings Overdrive": Triples offline earning rate for the next 8-hour cycle.
+
+"Glam Cave Discount": 10-25% off all cosmetic purchases for 1 hour.
+
+DB Config: booster_id, effect_description, duration_hours_or_uses, activation_method.
+
+11. Prestige & Long-Term Progression
+"Moving Out" (Prestige System)
+
+When a player reaches a significant MP milestone (e.g., 1 Billion MP).
+
+Action: Player chooses to "Move Out," which resets:
+
+Current MP balance to zero (or a small starting amount).
+
+Click Power, Chore Efficiency, Offline Earning upgrades.
+
+Permanent Rewards:
+
+"Mama's Allowance": A permanent % increase to all future MP earnings (e.g., +10% per prestige).
+
+Prestige Points: A new currency used to unlock unique, powerful permanent global upgrades (e.g., "Unlock 2nd Power-Up Slot," "+5% chance for rare chore").
+
+Exclusive "Veteran Clicker" Badge/Avatar Border.
+
+Unlocks a new "Yo Mama Wisdom" quote.
+
+DB Config (Supabase): prestige_mp_cost_level_X, prestige_allowance_bonus_pct_level_X, prestige_points_awarded_level_X.
+
+Prestige Tiers: Each prestige level can have a theme (e.g., "College Dorm," "First Apartment," "Dream House"), unlocking unique cosmetic previews or small story snippets from Yo Mama.
+
+12. Referral Program: Spread the Sass
+Rewards
+
+Referrer:
+
+Receives a flat MP bonus once the referee reaches a certain in-game milestone (e.g., 10,000 MP earned or Level 5).
+
+Receives a small % of the MP earned by the referee from clicks for their first X days (e.g., 5% for 7 days).
+
+DB Config: referrer_milestone_reward_mp, referee_milestone_target_mp, referrer_earnings_pct_from_referee, referrer_earnings_duration_days.
+
+Referee (New Player):
+
+Starts with a small MP bonus.
+
+Gets an exclusive "Mama's New Favorite" temporary profile badge.
+
+DB Config: referee_start_bonus_mp.
+
+Referral Links & Tracking
+
+Unique referral links generated for each player.
+
+Tracked via Supabase. Redis for quick lookups on referee sign-up.
+
+Leaderboard
+
+"Top Recruiters" leaderboard with weekly/monthly MP prizes.
+
+13. In-Game "Savings Account" (Staking Mock-up) - you must let the user know the blockchain staking is not yet live as it is pending audit which is expected to be done in last quater.
+
+This simulates staking without actual blockchain interaction, rewarding players for committing MP.
+
+Name: "Mama's Piggy Bank" or "Cookie Jar Fund."
+
+Tiers & Rewards
+
+Players can "deposit" MP for fixed durations.
+
+Examples:
+
+7 Days: Earn 5% bonus MP on the deposited amount.
+
+30 Days: Earn 25% bonus MP on the deposited amount.
+
+90 Days: Earn 100% bonus MP + a "Super Saver" badge.
+
+DB Config (Supabase): savings_tier_id, duration_days, bonus_mp_pct, min_deposit_mp, max_deposit_mp_per_tier.
+
+"Withdrawal": MP + bonus becomes available after the duration. Early withdrawal could forfeit bonus or incur a small MP penalty (configurable).
+
+DB Config: early_withdrawal_penalty_pct.
+
+Managed by Supabase scheduled functions to unlock funds.
+
+14. Technical Stack & Infrastructure (Supabase & Redis Focus)
+
+Frontend: Vue 3, Vite, Tailwind CSS, (shadcnUI or similar for rapid component building).
+
+Backend Logic: Supabase Edge Functions (Deno/TypeScript).
+
+All game logic, reward calculations, validations.
+
+Primary Database: Supabase (PostgreSQL).
+
+User accounts, inventory (cosmetics, MP), progression, family data, quest status, referral data, prestige levels, savings account deposits.
+
+Caching & Real-time Features: Redis.
+
+Leaderboards (Sorted Sets).
+
+Session Management.
+
+Rate Limiting.
+
+Real-time presence for Family chat/members online (Pub/Sub).
+
+Caching frequently accessed game parameters (chore lists, power-up stats, shop prices).
+
+Temporary data like active power-up timers for users.
+
+Hosting: Vercel (for frontend and Supabase functions).
+
+Push Notifications (Optional, Future): For offline earnings ready, family event starting, etc. (e.g., using Supabase Functions with a service like OneSignal).
+
+DB Configuration Management
+
+Create dedicated tables in Supabase (e.g., game_parameters, chore_definitions, power_up_stats, cosmetic_items, quest_templates).
+
+A simple admin interface (e.g., built with Retool, or directly via Supabase Studio) for game designers/admins to tweak these values without code changes.
+
+Supabase Functions will read these parameters. Cache heavily in Redis with appropriate TTLs, and use Redis Pub/Sub or a webhook mechanism to invalidate cache when parameters are updated in Supabase.
+
+15. Roadmap & Milestones (Revised)
+Phase	Quarter	Key Deliverables	Focus
+Phase 1: MVP Launch	QX 2024	Core Clicker, Mama Points, Basic Upgrades, Daily Login Streaks, Yo Mama Persona (Basic Animations & Roasts), Supabase/Redis Backend, User Accounts, First 3 Cosmetics (1 Mama Skin, 1 Theme, 1 Button), Basic Leaderboard (Total MP).	Get the core loop fun & stable.
+Phase 2: Engagement Boost	QX+1 2024	"Mama's Chores" System, First 2 Mini-Games, Power-Ups (2-3 types), Mystery Boxes (Common/Uncommon), Glam Cave V1 (more cosmetics), Daily/Weekly Quests.	Variety, short-term goals, personalization.
+Phase 3: Social & Competitive Core	QX+2 2024	Families (Clans) V1 (create, join, chat, basic perk), PvP "Click-Off Duels," Referral Program V1, Prestige System V1, "Savings Account" V1.	Community, competition, long-term goals.
+Phase 4: Content Expansion & Polish	QX+3 2024	More Mini-Games, Advanced Power-Ups/Boosters, Expanded Glam Cave (more rarity tiers), Family Events, Seasonal Leaderboards, Advanced Yo Mama Animations/Moods.	Depth, polish, replayability.
+Phase 5: Future Proofing & $MAMA Prep	QY 2025	Begin technical investigation for $MAMA token integration, smart contract development (if pursued), community building around future airdrop, physical merch exploration.	Prepare for potential blockchain pivot.
+16. Risk Mitigation (Revised)
+Risk	Mitigation
+Low Player Retention	Diverse mini-games, daily quests, streaks, social features (Families, PvP), frequent content updates (cosmetics, events), engaging Yo Mama persona, clear long-term prestige goals.
+Boring/Repetitive Gameplay	Introduce "Mama's Chores" for varied interactions, dynamic events, new mini-games regularly, evolving Yo Mama character.
+Server Performance Issues	Leverage Redis for caching and real-time, optimize Supabase queries, server-side validation, load testing before major feature releases.
+Cheating/Exploits	Server-side validation for all critical actions, rate limiting, anomaly detection, community reporting. Quick patching of identified exploits.
+Economy Imbalance (MP)	Careful design of MP sinks (cosmetics, upgrades, PvP entries) and sources. Monitor MP inflation. DB-configurable parameters allow for tuning.
+Player Burnout Before Future Airdrop	Keep the core game fun and engaging on its own. Communicate clearly about the potential future airdrop without over-promising timelines. Regular dev updates and community engagement.
+Scalability of Supabase/Redis	Monitor usage, optimize queries and data structures. Supabase and Redis are generally scalable but require good architecture.
+
+This revamped PRD for "ClickyoMama" focuses on building a highly engaging, customizable, and fun web-based clicker game, with the clear understanding that all in-game achievements (Mama Points) are recorded for a potential future $MAMA token airdrop. The emphasis on DB-configurable parameters will give you immense flexibility in tuning the game post-launch. Let's get clicking!

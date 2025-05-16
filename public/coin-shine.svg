@@ -1,0 +1,16 @@
+<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="24" cy="24" r="20" fill="#FFE371" stroke="#FFBD3D" stroke-width="2"/>
+  <circle cx="24" cy="24" r="16" fill="#FFF0A0"/>
+  <path d="M24 12C29.5228 12 34 16.4772 34 22C34 27.5228 29.5228 32 24 32C18.4772 32 14 27.5228 14 22C14 16.4772 18.4772 12 24 12Z" fill="#FFFAD1"/>
+  <path d="M24 8C25.1046 8 26 16.9543 26 24C26 31.0457 25.1046 40 24 40C22.8954 40 22 31.0457 22 24C22 16.9543 22.8954 8 24 8Z" fill="#FFBD3D"/>
+  <path d="M40 24C40 25.1046 31.0457 26 24 26C16.9543 26 8 25.1046 8 24C8 22.8954 16.9543 22 24 22C31.0457 22 40 22.8954 40 24Z" fill="#FFBD3D"/>
+  
+  <!-- Shine elements -->
+  <circle cx="18" cy="18" r="2" fill="white"/>
+  <circle cx="16" cy="28" r="1.5" fill="white"/>
+  <circle cx="28" cy="16" r="1.5" fill="white"/>
+  <path d="M30 32L34 36" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+  <path d="M14 14L10 10" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+  <path d="M14 34L10 38" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+  <path d="M34 14L38 10" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+</svg> 

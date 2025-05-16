@@ -1,0 +1,123 @@
+# Reown SIWS Flow and Tokens
+
+Reown AppKit’s SIWX plugin lets you implement “Sign-In with Solana” by having the user sign a unique message with their wallet. In your AppKit config, simply add the SIWX plugin. For example:
+
+```ts
+import { createAppKit } from "@reown/appkit";
+import { DefaultSIWX }   from "@reown/appkit-siwx";
+import { SolanaAdapter } from "@reown/appkit-adapter-solana";
+import { solana, solanaDevnet } from "@reown/appkit/networks";
+
+// Set up AppKit with Solana wallets and SIWX
+const appkit = createAppKit({
+  adapters: [
+    new SolanaAdapter({ wallets: [/* e.g. PhantomAdapter, SolflareAdapter */] })
+  ],
+  networks: [solana, solanaDevnet],
+  projectId: "YOUR_REOWN_PROJECT_ID",
+  metadata: { name: "My DApp", description: "Solana SIWS Example", url: "https://example.com" },
+  siwx: new DefaultSIWX(),  // enables SIWS using the default implementation
+});
+```
+
+The **DefaultSIWX** config handles message creation, signature verification and session storage automatically. In other words, when the user connects their Solana wallet (e.g. via `<appkit-button>` or the AppKit modal), AppKit will prompt them to sign the CAIP-122 SIWS message and verify the signature. By default, this stores a “session” in local storage, but **no JWT or auth token is produced by AppKit itself**. (Reown’s Cloud SIWX service can issue a JWT after verifying EVM signatures, but **Solana SIWS is not supported by the Cloud service yet**, so AppKit does not return a token for Solana.)
+
+**Key Point:** *Reown’s client-side SIWS flow does NOT automatically give you a JWT or payload. You must forward the signed message to your backend (e.g. Supabase) and handle token creation there.*
+
+# Reacting to Login (Hooks)
+
+Reown provides Vue composables to access the connected wallet. For example, you can use:
+
+```ts
+import { useAppKitAccount } from "@reown/appkit/vue";
+
+const { address, status, isConnected } = useAppKitAccount({ namespace: "solana" });
+```
+
+Here `address` is the wallet address, `isConnected` is `true` once the wallet is connected *and* SIWS is completed, and `status` is the connection status string. You can watch these in your component. For instance:
+
+```vue
+<template>
+  <div>
+    <appkit-button view="Connect" namespace="solana">
+      {{ address ? "Signed in: " + address : "Sign in with Solana" }}
+    </appkit-button>
+    <p v-if="isConnected">Signed in successfully!</p>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { useAppKitAccount } from "@reown/appkit/vue";
+const { address, status, isConnected } = useAppKitAccount({ namespace: "solana" });
+
+// You can react to isConnected changing or address becoming set.
+// For example, once `isConnected` becomes true, you know SIWS succeeded.
+</script>
+```
+
+Alternatively, the `useWalletInfo` or `useAppKitEvents` hooks can give more details. You can also use `useDisconnect()` to log out (disconnect) the wallet when needed.
+
+# Custom Backend (Supabase) Integration
+
+Since AppKit does not emit a JWT, you need to handle authentication with Supabase yourself. Two main approaches:
+
+* **Custom SIWX implementation**: Reown’s SIWX plugin is a customizable interface. You could implement a custom `verifySignature` step that sends the signed message to your Supabase Edge Function and waits for a response. This means replacing `DefaultSIWX` with your own SIWXConfig that, for example, does a `fetch("/.netlify/functions/solana-login", { message, signature })` inside its `addSession` or `verifySignature` hook.
+
+* **Manual fetch after sign**: Or simply let the default flow run (so the user signs the message), then in your app code do a `fetch` with the signed payload. For example, once `address` is known:
+
+  ```ts
+  // Pseudo-code after SIWS sign succeeds
+  const message = /* the original SIWS message string, should match what was signed */;
+  const signature = /* signature returned by wallet (AppKit might provide this or you get it via wallet adapter) */;
+  // Call your Supabase Edge Function
+  const res = await fetch('/.netlify/functions/solanaAuth', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ address, message, signature }),
+  });
+  const { access_token } = await res.json();
+  // Set Supabase auth on client
+  await supabase.auth.setAuth(access_token);
+  ```
+
+  In the Edge Function, you would verify the Solana signature (using `@solana/web3.js` `PublicKey.verify`), then use the Supabase **admin** API to `createUser` if needed and generate an access token for that user. For example (Node pseudo-code):
+
+  ```js
+  import { createClient } from '@supabase/supabase-js'
+  const supabaseAdmin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
+  export const handler = async (req) => {
+    const { address, message, signature } = JSON.parse(req.body);
+    // Verify signature with Solana libs...
+    const valid = verifySolanaSignature(message, signature, address);
+    if (!valid) return { statusCode: 401, body: 'Invalid signature' };
+    // Create or get Supabase user (using wallet address as ID or metadata)
+    const { data, error } = await supabaseAdmin.auth.admin.createUser({
+      // e.g. use address as email alias or user_metadata to link wallet
+      email: `${address}@example.com`, 
+      password: SOME_SECURE_RANDOM,
+      email_confirm: true,
+      user_metadata: { solanaAddress: address }
+    });
+    // Generate a JWT or use supabaseAdmin to sign in the user
+    const token = await supabaseAdmin.auth.api.getJwt(data.user.id);
+    return { statusCode: 200, body: JSON.stringify({ access_token: token }) };
+  };
+  ```
+
+  (The exact token generation depends on Supabase’s version; you may also call `supabaseAdmin.auth.signInWithPassword` if you set a known password, or use `setAuth(token)` as shown above.)
+
+The key is that *after* verifying the signed message on the backend, you must issue a Supabase auth token (access\_token) and return it to the client. Then in the Vue app, use `supabase.auth.setAuth(access_token)` so that your Supabase client is authenticated as that user.
+
+# Integration Summary
+
+1. **Install and configure AppKit-Sol**: Follow Reown docs to initialize AppKit with the Solana adapter and SIWX plugin. Ensure you have a Reown Cloud project ID.
+
+2. **Add a Sign-In button**: Use the `<appkit-button>` component (or your own button that calls `open({ view: "Connect", namespace: "solana" })`) to trigger the wallet modal.
+
+3. **Handle the sign-in event**: After the user connects, AppKit/DefaultSIWX will prompt for the SIWS signature. Use `useAppKitAccount({namespace: "solana"})` to detect when the user is signed in (e.g. `isConnected` becomes true).
+
+4. **Send to Supabase**: Once you have the signed message and signature, POST them to your Supabase Edge Function or endpoint. In that function, verify the signature and create/sign-in the Supabase user. Return the Supabase JWT.
+
+5. **Set Supabase session**: In the front-end, call `supabase.auth.setAuth(token)` with the returned token so that Supabase is now logged in as the wallet-address user.
+
+In short, Reown handles the wallet sign/verify in the browser, but *your* backend must trust that and issue the actual Supabase credentials. By using Reown’s SIWX plugin and hooks, you avoid manual message construction, yet you bridge to Supabase via your own endpoint. This way the user only signs once (SIWS) and immediately becomes authenticated in Supabase.

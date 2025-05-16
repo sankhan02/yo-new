@@ -30,6 +30,13 @@ selectedNetworkId: {{ state.selectedNetworkId }}
 Name: {{ walletInfo }}<br />
       </pre>
     </section>
+
+    <section>
+      <h2>SIWX Session</h2>
+      <div><b>Signature:</b> <span style="word-break:break-all">{{ siwxSession?.signature || '-' }}</span></div>
+      <div><b>Status:</b> {{ siwxSession?.status || '-' }}</div>
+      <div><b>Nonce:</b> {{ siwxSession?.nonce || '-' }}</div>
+    </section>
 </template>
   
 <script >
@@ -44,7 +51,14 @@ import {
 
 export default {
   name: "InfoList",
-  setup(){
+  props: {
+    siwxSession: {
+      type: Object,
+      required: false,
+      default() { return {}; },
+    },
+  },
+  setup(props){
     const kitTheme = useAppKitTheme();
     const state = useAppKitState();
     const accountInfo = useAppKitAccount();
@@ -60,6 +74,7 @@ export default {
       state,
       accountInfo,
       walletInfo,
+      siwxSession: props.siwxSession
     };
   },
 };

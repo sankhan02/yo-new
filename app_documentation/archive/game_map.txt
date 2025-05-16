@@ -1,0 +1,157 @@
+# Game Map: YO MAMA Clicker Game
+
+---
+
+## 1. Game Overview
+
+**Title:** YO MAMA (The Ultimate Clicker Game on Solana)
+
+**Genre:** Idle/Clicker, Competitive PvP, Social
+
+**Theme:** Meme-inspired, lighthearted, and competitive. The game is themed around viral internet culture, with playful visuals, meme upgrades, and a fun, social atmosphere.
+
+**Primary Objectives:**
+- Accumulate as many coins as possible by clicking and using power-ups.
+- Maintain daily streaks for increasing multipliers and rewards.
+- Compete in PvP (Player vs Player) matches for coins, XP, and leaderboard status.
+- Progress through prestige levels to unlock permanent bonuses and meme upgrades.
+- Join or create clans for social and competitive benefits.
+
+---
+
+## 2. Gameplay Mechanics
+
+- **Core Loop:**
+  - Click the main button to earn coins (with a cooldown).
+  - Use power-ups to boost earnings or automate clicking.
+  - Maintain daily login streaks for increasing multipliers and special rewards.
+  - Spend coins on upgrades, power-ups, and prestige resets.
+  - Compete in PvP matches (1v1, 2v2) for additional rewards.
+
+- **Controls:**
+  - Mouse/tap to click the main button.
+  - UI buttons for activating power-ups, claiming rewards, and entering PvP.
+  - Modal dialogs for confirmation (e.g., forfeit, prestige).
+
+- **Unique Mechanics:**
+  - **Streak System:** Daily logins increase your streak, unlocking multipliers and special rewards.
+  - **Prestige System:** Reset progress for permanent bonuses and unlock meme-themed upgrades.
+  - **PvP Click Battles:** Real-time matches against other players, with anti-cheat detection and emote communication.
+  - **Clan System:** Join or create clans for group bonuses and social features.
+  - **Offline Earnings:** Earn coins while away (10% of normal rate, up to 8 hours).
+
+---
+
+## 3. Game Features
+
+### Levels & Progression
+- **No traditional levels/stages.**
+- **Progression is tracked via:**
+  - **Streak Days:** Consecutive daily logins.
+  - **Prestige Levels:** Resetting progress for permanent bonuses.
+  - **Total Coins/Clicks:** Core stats for progression and unlocks.
+  - **Meme Upgrades:** Unlocked at certain prestige levels for unique bonuses.
+
+### Game Modes
+- **Single-Player (Idle/Clicker):**
+  - Click to earn coins, use power-ups, and progress through streaks and prestige.
+- **PvP (Player vs Player):**
+  - **1v1 Click Wars:** Compete head-to-head; winner takes 70% of the bet pot. 30-second matches.
+  - **2v2 Tag-Team Taps:** Team up for 2v2 matches (coming soon); winning team splits 80% of the pot. 60-second matches.
+  - **Emotes:** Send emotes to opponents during matches.
+  - **Forfeit Option:** Players can forfeit a match, conceding victory.
+- **Clans:**
+  - Join or create clans for group bonuses, leaderboards, and social play.
+
+---
+
+## 4. Power-ups
+
+- **Coin Rush**
+  - **Effect:** 2x coins for 30 seconds (default; can be doubled by rewards).
+  - **How to Obtain:** Unlocked every 500 clicks; can be purchased/activated with coins.
+  - **Cooldown:** After use, must wait for next unlock.
+
+- **Auto-Clicker**
+  - **Effect:** Automatically clicks once per second (default; can be increased by upgrades/rewards).
+  - **How to Obtain:** 0.1% chance on each click; can be purchased/activated with coins.
+  - **Cooldown:** After use, must wait for next unlock.
+
+- **Power-up Duration/Effect Upgrades:**
+  - Some streak rewards and upgrades can double the duration or effect of power-ups.
+
+---
+
+## 5. Rewards System
+
+- **In-Game Currency:**
+  - **Coins:** Earned by clicking, PvP, streaks, offline earnings, and rewards.
+  - **XP:** Earned in PvP matches.
+
+- **Streak Rewards:**
+  - **3 Days:** 1.2x multiplier
+  - **5 Days:** 5,000 bonus coins
+  - **7 Days:** 1.5x multiplier
+  - **10 Days:** Double power-up duration
+  - **15 Days:** 15,000 bonus coins
+  - **30 Days:** 2.0x multiplier
+
+- **Prestige Rewards:**
+  - **Prestige:** Reset progress for +10% permanent earnings bonus per prestige.
+  - **Meme Upgrades:** Unlock unique upgrades (e.g., Doge Mode, Pepe Power, Stonks Master) for special bonuses.
+
+- **PvP Rewards:**
+  - Win coins and XP based on match outcome and bet amount.
+  - Leaderboard status and clan bonuses.
+
+- **Offline Earnings:**
+  - Earn 10% of normal rate while away (up to 8 hours).
+
+- **Referral Rewards:**
+  - Invite friends for bonus coins and special badges.
+
+- **NFT/Unlockable Content:**
+  - Earn NFT rewards (e.g., Golden Spoon, Fire Clicker, Click Master Trophy) for reaching milestones.
+
+---
+
+## 6. Additional Features
+
+- **Customization:**
+  - **Avatars:** Players can set custom avatars.
+  - **Theme:** Selectable game themes (light/dark, etc.).
+  - **Preferences:** Toggle sound, music, notifications.
+
+- **Social & Community:**
+  - **Clans:** Create/join clans, compete on clan leaderboards, earn group bonuses.
+  - **Emotes:** Send emotes in PvP matches.
+  - **Leaderboards:** Track top players and clans.
+  - **Referral System:** Share referral links for rewards.
+
+- **Anti-Cheat:**
+  - Real-time anti-cheat detection in PvP matches.
+
+- **Achievements:**
+  - Earn badges and achievements for milestones (e.g., click count, streaks, PvP wins).
+
+---
+
+## 7. Summary Table
+
+| Feature         | Description |
+|----------------|-------------|
+| Clicker Core   | Click to earn coins, with cooldowns and multipliers |
+| Power-ups      | Coin Rush (2x coins), Auto-Clicker (auto-clicks), upgrades |
+| Streak System  | Daily logins for multipliers and rewards |
+| Prestige       | Reset for permanent bonuses and meme upgrades |
+| PvP Modes      | 1v1, 2v2 (coming soon), emotes, forfeit, betting |
+| Clans          | Group play, bonuses, leaderboards |
+| Customization  | Avatars, themes, preferences |
+| Social         | Emotes, referrals, leaderboards |
+| Achievements   | Badges, NFT rewards, milestones |
+| Anti-Cheat     | Real-time detection in PvP |
+| Offline Earnings | Earn coins while away (10% rate, up to 8h) |
+
+---
+
+*This document is based on extensive codebase analysis and reflects the current game mechanics, features, and structure. For further details, see the codebase or ask for specific feature breakdowns.*

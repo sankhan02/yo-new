@@ -8,7 +8,7 @@
 
 <script>
 import { useDisconnect, useAppKit, useAppKitNetwork } from "@reown/appkit/vue";
-import { networks } from "../config/index";
+import { solana, solanaDevnet } from "@reown/appkit/networks";
 
 export default {
   name: "ActionButtonList",
@@ -18,7 +18,7 @@ export default {
     const networkData = useAppKitNetwork();
 
     const openAppKit = () => open();
-    const switchToNetwork = () => networkData.value.switchNetwork(networks[1]);
+    const switchToNetwork = () => networkData.value.switchNetwork(solanaDevnet);
     const handleDisconnect = async () => {
         try {
           await disconnect();

@@ -1,0 +1,132 @@
+---
+# Codebase Correction Plan: Supabase & Redis Integration
+# Source of Truth: @stripdown-game-sql.txt
+
+## 1. Database Query Updates
+
+- **Audit all SQL/ORM queries:**
+  - Ensure all table and column names match exactly (e.g., `user_game_state`, `referral_codes`, `referrals`, `pvp_matches`, etc.).
+  - Use `uuid` for all primary/foreign keys (e.g., `user_id`, `referrer_id`, `referee_id`, `match_id`).
+  - Update any legacy queries using old names or types.
+  - Example (Supabase JS):
+    ```typescript
+    // Fetch user game state
+    const { data } = await supabase
+      .from('user_game_state')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
+    ```
+- **Relationships:**
+  - Use explicit joins for related data (e.g., join `profiles` to `user_game_state` for leaderboards).
+  - For referrals, always use the new normalized structure: `referral_codes` for code lookup, `referrals` for relationships.
+- **Timestamps:**
+  - Use `timestamptz` for all time fields; handle timezones in backend logic.
+- **Upserts:**
+  - Use upserts for state that may be created/updated (e.g., `user_game_state`).
+
+## 2. Redis Logic Implementation
+
+- **Clicker batching:**
+  - On each click, increment a Redis counter:
+    ```typescript
+    await redis.incr(`user:${userId}:clicks`);
+    ```
+  - Periodically (e.g., every 30s or on logout/session end), flush to Postgres:
+    ```typescript
+    const clicks = await redis.getdel(`user:${userId}:clicks`);
+    if (clicks) {
+      await supabase.rpc('increment_clicks', { user_id: userId, clicks: parseInt(clicks, 10) });
+    }
+    ```
+- **Anti-cheat/rate limiting:**
+  - Use Redis to track click rates:
+    ```typescript
+    const key = `user:${userId}:clickrate`;
+    const count = await redis.incr(key);
+    if (count === 1) await redis.expire(key, 1); // 1 second window
+    if (count > MAX_CLICKS_PER_SEC) {
+      // Log to user_action_logs and block action
+    }
+    ```
+- **Matchmaking/session state:**
+  - Store temporary matchmaking/session data in Redis, not Postgres.
+  - On match confirmation, persist to Postgres.
+- **Critical state:**
+  - Always flush/commit important state to Postgres; Redis is a cache/queue only.
+
+## 3. Row-Level Security (RLS) Enforcement
+
+- **Authenticated sessions:**
+  - All queries for private data (e.g., user state, referrals) must use the authenticated user's session/JWT.
+  - Example (Supabase):
+    ```typescript
+    const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
+      global: { headers: { Authorization: `Bearer ${userJwt}` } }
+    });
+    ```
+- **Admin actions:**
+  - Check for `admin` role before allowing config changes or privileged actions.
+  - Example:
+    ```typescript
+    if (!user.roles.includes('admin')) throw new Error('Forbidden');
+    ```
+- **No public exposure:**
+  - Never expose sensitive data via public endpoints or bypass RLS with service keys.
+
+## 4. Public Leaderboard Access
+
+- **Use SQL views:**
+  - Query `public_leaderboard_top_coins`, `public_leaderboard_top_streaks`, `public_leaderboard_most_referrals` for leaderboard data.
+  - Example:
+    ```typescript
+    // Fetch top coin earners
+    const { data } = await supabase
+      .from('public_leaderboard_top_coins')
+      .select('*');
+    ```
+- **Frontend integration:**
+  - Dynamically select the view based on user button selection.
+  - No authentication required for these queries (anon role has SELECT).
+- **Security:**
+  - Ensure only public, non-sensitive data is exposed in these views.
+
+## 5. Action Logging
+
+- **Log sensitive actions:**
+  - On suspicious activity, admin changes, or match results, insert a log entry:
+    ```typescript
+    await supabase.from('user_action_logs').insert({
+      user_id: userId,
+      action_type: 'suspicious_click',
+      details: { ip, userAgent, extraInfo },
+      created_at: new Date().toISOString()
+    });
+    ```
+- **Audit and review:**
+  - Regularly review logs for abuse or security issues.
+
+## 6. Additional Recommendations
+
+- **Testing:**
+  - Write integration tests to verify RLS enforcement, Redis batching, and data consistency.
+- **Monitoring:**
+  - Monitor Redis and Postgres for performance and error rates.
+- **Documentation:**
+  - Document all changes and ensure all team members are aware of the new schema and logic.
+
+---
+# Summary Table
+| Area                | Action/Code Example/Note                                      |
+|---------------------|--------------------------------------------------------------|
+| DB Queries          | Update to match schema, use correct types/relationships       |
+| Redis Integration   | Batch clicks, rate limit, flush to Postgres                   |
+| RLS Enforcement     | Use authenticated sessions, check admin role                  |
+| Leaderboards        | Query public views, allow anon access                         |
+| Action Logging      | Insert into user_action_logs for sensitive actions            |
+
+---
+# Next Steps
+- Systematically update all code modules (API, services, stores) per above.
+- Test all flows (clicker, referrals, PvP, admin, leaderboards) for compliance.
+- Review logs and metrics after deployment to ensure robust, secure operation.

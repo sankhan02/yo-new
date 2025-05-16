@@ -1,0 +1,627 @@
+# Migrating from Local Storage to Supabase with Redis Integration
+
+## 1. Course of Action for Migration
+
+### Step 1: Set up Supabase Tables and Schema
+1. **Analyze current local storage data structure** in your game:
+   - Map out `gameStore`, `tokenStore`, and other Pinia stores that use localStorage
+   - Design normalized tables for user profiles, game state, transactions, etc.
+
+2. **Create Supabase tables** with proper relations:
+   ```sql
+   -- Example schema for core game data
+   CREATE TABLE users (
+     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     wallet_address TEXT UNIQUE NOT NULL,
+     username TEXT,
+     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+     last_login TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+   );
+   
+   CREATE TABLE game_states (
+     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+     coins BIGINT DEFAULT 0,
+     clicks INTEGER DEFAULT 0,
+     streak_days INTEGER DEFAULT 0,
+     last_click_time TIMESTAMP WITH TIME ZONE,
+     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+   );
+   
+   -- Add indexes for performance
+   CREATE INDEX idx_game_states_user_id ON game_states(user_id);
+   ```
+
+3. **Set up Row Level Security (RLS)** for data protection:
+   ```sql
+   -- Enable RLS
+   ALTER TABLE game_states ENABLE ROW LEVEL SECURITY;
+   
+   -- Create policies
+   CREATE POLICY "Users can read their own game state" 
+   ON game_states FOR SELECT 
+   USING (auth.uid() = user_id);
+   
+   CREATE POLICY "Users can update their own game state" 
+   ON game_states FOR UPDATE 
+   USING (auth.uid() = user_id);
+   ```
+
+### Step 2: Implement Migration Logic
+
+1. **Create a migration utility** to transfer localStorage data to Supabase:
+   ```typescript
+   // src/utils/migrationUtils.ts
+   import { supabase } from '@/lib/supabase';
+   
+   export async function migrateUserData(walletAddress: string) {
+     try {
+       // Extract data from localStorage
+       const coins = localStorage.getItem('coins');
+       const totalClicks = localStorage.getItem('totalClicks');
+       const streakDays = localStorage.getItem('streakDays');
+       const lastClickTime = localStorage.getItem('lastClickTime');
+       
+       // Check if user exists
+       const { data: userData, error: userError } = await supabase
+         .from('users')
+         .select('id')
+         .eq('wallet_address', walletAddress)
+         .single();
+       
+       if (userError && userError.code !== 'PGRST116') {
+         throw userError;
+       }
+       
+       // Create user if doesn't exist
+       const userId = userData?.id || 
+         (await supabase.from('users').insert({ wallet_address: walletAddress }).select('id').single()).data.id;
+       
+       // Insert game state
+       await supabase.from('game_states').upsert({
+         user_id: userId,
+         coins: coins ? parseInt(coins) : 0,
+         clicks: totalClicks ? parseInt(totalClicks) : 0,
+         streak_days: streakDays ? parseInt(streakDays) : 0,
+         last_click_time: lastClickTime ? new Date(parseInt(lastClickTime)) : null,
+       });
+       
+       return true;
+     } catch (error) {
+       console.error('Migration error:', error);
+       return false;
+     }
+   }
+   ```
+
+2. **Trigger migration on user authentication**:
+   ```typescript
+   // In auth.ts
+   async function signIn(wallet: string) {
+     // Existing sign-in code...
+     
+     // After successful authentication
+     const migrationSuccess = await migrateUserData(wallet);
+     
+     if (migrationSuccess) {
+       // Clear localStorage data that has been migrated
+       // Don't clear SIWX data stored under '@appkit/siwx'
+       localStorage.removeItem('coins');
+       localStorage.removeItem('totalClicks');
+       // etc...
+     }
+   }
+   ```
+
+### Step 3: Set Up Upstash Redis
+
+1. **Create an Upstash Redis instance**:
+   - Sign up at [Upstash](https://upstash.com/)
+   - Create a new Redis database
+   - Copy your Redis connection details
+
+2. **Install Redis client**:
+   ```bash
+   npm install @upstash/redis ioredis
+   ```
+
+3. **Configure Redis client**:
+   ```typescript
+   // src/lib/redis.ts
+   import { Redis } from '@upstash/redis';
+   
+   export const redis = new Redis({
+     url: import.meta.env.VITE_UPSTASH_REDIS_URL,
+     token: import.meta.env.VITE_UPSTASH_REDIS_TOKEN,
+   });
+   ```
+
+4. **Update environment variables**:
+   ```
+   VITE_UPSTASH_REDIS_URL=your-redis-url
+   VITE_UPSTASH_REDIS_TOKEN=your-redis-token
+   ```
+
+### Step 4: Update Store Logic for Database Integration
+
+1. **Refactor Pinia stores to use Supabase and Redis**:
+   ```typescript
+   // src/store/gameStore.ts
+   import { defineStore } from 'pinia';
+   import { supabase } from '@/lib/supabase';
+   import { redis } from '@/lib/redis';
+   
+   export const useGameStore = defineStore('game', () => {
+     // State
+     const coins = ref(0);
+     const totalClicks = ref(0);
+     // Other state values...
+     
+     // Actions
+     async function loadGameState() {
+       const wallet = localStorage.getItem('wallet');
+       if (!wallet) return;
+       
+       // Try Redis first for faster loading
+       try {
+         const cachedData = await redis.get(`game_state:${wallet}`);
+         if (cachedData) {
+           const data = JSON.parse(cachedData as string);
+           coins.value = data.coins;
+           totalClicks.value = data.clicks;
+           // Set other values...
+           return;
+         }
+       } catch (err) {
+         console.error('Redis error:', err);
+       }
+       
+       // Fall back to Supabase
+       try {
+         const { data, error } = await supabase
+           .from('game_states')
+           .select('*')
+           .eq('user_id', wallet)
+           .single();
+           
+         if (error) throw error;
+         
+         if (data) {
+           coins.value = data.coins;
+           totalClicks.value = data.clicks;
+           // Set other values...
+           
+           // Cache in Redis for next time
+           await redis.set(
+             `game_state:${wallet}`, 
+             JSON.stringify({
+               coins: data.coins,
+               clicks: data.clicks,
+               // Other values...
+             }),
+             { ex: 3600 } // 1 hour expiration
+           );
+         }
+       } catch (err) {
+         console.error('Supabase error:', err);
+       }
+     }
+     
+     async function saveGameState() {
+       const wallet = localStorage.getItem('wallet');
+       if (!wallet) return;
+       
+       try {
+         // Update Supabase
+         await supabase.from('game_states').upsert({
+           user_id: wallet,
+           coins: coins.value,
+           clicks: totalClicks.value,
+           // Other values...
+           updated_at: new Date()
+         });
+         
+         // Update Redis cache
+         await redis.set(
+           `game_state:${wallet}`, 
+           JSON.stringify({
+             coins: coins.value,
+             clicks: totalClicks.value,
+             // Other values...
+           }),
+           { ex: 3600 } // 1 hour expiration
+         );
+       } catch (err) {
+         console.error('Error saving game state:', err);
+       }
+     }
+     
+     // Return store values
+     return {
+       // State
+       coins,
+       totalClicks,
+       // Other state values...
+       
+       // Actions
+       loadGameState,
+       saveGameState,
+       // Other actions...
+     };
+   });
+   ```
+
+2. **Implement auto-save and sync mechanisms**:
+   ```typescript
+   // In your game component
+   onMounted(() => {
+     // Load initial state
+     gameStore.loadGameState();
+     
+     // Set up periodic save
+     const saveInterval = setInterval(() => {
+       gameStore.saveGameState();
+     }, 60000); // Save every minute
+     
+     onBeforeUnmount(() => {
+       clearInterval(saveInterval);
+       gameStore.saveGameState(); // Final save
+     });
+   });
+   ```
+
+## 2. Data Storage in Redis
+
+### High-Frequency Game Data
+- **User Session Data**: 
+  ```
+  Key: user:session:{walletAddress}
+  Value: { isLoggedIn: true, lastActivity: timestamp }
+  TTL: 24 hours
+  ```
+
+- **Game State Cache**:
+  ```
+  Key: game_state:{walletAddress}
+  Value: { coins: 1000, clicks: 50, streak: 3, ... }
+  TTL: 1 hour
+  ```
+
+- **Cooldown Timers**:
+  ```
+  Key: cooldown:{walletAddress}:{actionType}
+  Value: timestamp (expiration time)
+  TTL: actual cooldown period (15 minutes)
+  ```
+
+### Multiplayer Data
+- **Online Player Status**:
+  ```
+  Key: online_players
+  Value: Set of walletAddress values
+  No TTL (managed via presence detection)
+  ```
+
+- **Matchmaking Queue**:
+  ```
+  Key: matchmaking_queue
+  Value: Sorted set with score = join_time
+  TTL: None (managed by matchmaking service)
+  ```
+
+- **Active Matches**:
+  ```
+  Key: match:{matchId}
+  Value: { player1: {...}, player2: {...}, startTime: timestamp, scores: {...} }
+  TTL: 1 hour after match completion
+  ```
+
+### Rate Limiting Data
+- **API Rate Limits**:
+  ```
+  Key: ratelimit:{walletAddress}:{endpoint}
+  Value: Counter of requests
+  TTL: Rate limit window (e.g., 1 minute)
+  ```
+
+- **Click Rate Limits**:
+  ```
+  Key: clickrate:{walletAddress}
+  Value: List of timestamps of recent clicks
+  TTL: 1 minute
+  ```
+
+### Social & Leaderboard Data
+- **Leaderboards**:
+  ```
+  Key: leaderboard:global
+  Value: Sorted set with score = points
+  TTL: None (updated continuously)
+  ```
+
+- **Friend Leaderboards**:
+  ```
+  Key: leaderboard:friends:{walletAddress}
+  Value: Sorted set with score = points
+  TTL: 1 day
+  ```
+
+## 3. Redis Use Cases & Best Practices
+
+### Caching Data
+
+**Implementation Strategy**:
+```typescript
+// src/utils/cacheUtils.ts
+import { redis } from '@/lib/redis';
+
+export async function getCachedData<T>(key: string, fetchFn: () => Promise<T>, ttl = 3600): Promise<T> {
+  try {
+    // Try cache first
+    const cachedData = await redis.get(key);
+    if (cachedData) {
+      return JSON.parse(cachedData as string) as T;
+    }
+    
+    // Cache miss, fetch fresh data
+    const freshData = await fetchFn();
+    
+    // Store in cache
+    await redis.set(key, JSON.stringify(freshData), { ex: ttl });
+    
+    return freshData;
+  } catch (error) {
+    console.error('Cache error:', error);
+    // Fall back to fetching fresh data on Redis error
+    return fetchFn();
+  }
+}
+```
+
+**Best Practices**:
+- Use the cache-aside pattern (check cache first, then database)
+- Cache data that's frequently accessed but rarely changes
+- Set appropriate TTLs based on data volatility
+- Include version/invalidation mechanisms for cache consistency
+- Implement cache warming for critical data
+
+### Session Management
+
+**Implementation Strategy**:
+```typescript
+// src/utils/sessionUtils.ts
+import { redis } from '@/lib/redis';
+
+export async function setUserSession(walletAddress: string) {
+  const sessionData = {
+    isLoggedIn: true,
+    lastActivity: Date.now(),
+    userAgent: navigator.userAgent
+  };
+  
+  await redis.set(`user:session:${walletAddress}`, JSON.stringify(sessionData), { ex: 86400 }); // 24 hours
+}
+
+export async function getUserSession(walletAddress: string) {
+  const sessionData = await redis.get(`user:session:${walletAddress}`);
+  if (!sessionData) return null;
+  
+  // Update last activity
+  const session = JSON.parse(sessionData as string);
+  session.lastActivity = Date.now();
+  await redis.set(`user:session:${walletAddress}`, JSON.stringify(session), { ex: 86400 });
+  
+  return session;
+}
+
+export async function invalidateSession(walletAddress: string) {
+  await redis.del(`user:session:${walletAddress}`);
+}
+```
+
+**Best Practices**:
+- Store minimal session data in Redis (identification, not full user profile)
+- Refresh TTL on user activity
+- Implement a consistent session invalidation strategy
+- Consider Redis pub/sub for multi-instance session events
+- Use encryption for sensitive session data
+
+### Rate Limiting
+
+**Implementation Strategy**:
+```typescript
+// src/utils/rateLimitUtils.ts
+import { redis } from '@/lib/redis';
+
+export async function checkRateLimit(key: string, limit: number, windowSeconds: number): Promise<boolean> {
+  const current = await redis.incr(key);
+  
+  // Set expiry on first request
+  if (current === 1) {
+    await redis.expire(key, windowSeconds);
+  }
+  
+  return current <= limit;
+}
+
+// Usage example
+export async function canPerformAction(walletAddress: string, action: string, limit = 10, windowSeconds = 60) {
+  const key = `ratelimit:${walletAddress}:${action}`;
+  return checkRateLimit(key, limit, windowSeconds);
+}
+```
+
+**Best Practices**:
+- Implement sliding window rate limits
+- Use multi-tiered rate limiting (per-endpoint, per-user, global)
+- Return rate limit headers (limit, remaining, reset)
+- Create different limits for different user tiers/roles
+- Handle rate limit exceeding gracefully (429 status code, retry header)
+
+### Leaderboards
+
+**Implementation Strategy**:
+```typescript
+// src/utils/leaderboardUtils.ts
+import { redis } from '@/lib/redis';
+
+export async function updateLeaderboardScore(leaderboard: string, userId: string, score: number) {
+  await redis.zadd(leaderboard, { score, member: userId });
+}
+
+export async function getLeaderboardRank(leaderboard: string, userId: string) {
+  return redis.zrevrank(leaderboard, userId);
+}
+
+export async function getTopScores(leaderboard: string, count = 10, withScores = true) {
+  return redis.zrevrange(leaderboard, 0, count - 1, { withScores });
+}
+
+export async function getLeaderboardAroundUser(leaderboard: string, userId: string, range = 5) {
+  const rank = await getLeaderboardRank(leaderboard, userId);
+  if (rank === null) return [];
+  
+  const start = Math.max(0, rank - range);
+  const end = rank + range;
+  
+  return redis.zrevrange(leaderboard, start, end, { withScores: true });
+}
+```
+
+**Best Practices**:
+- Use Redis sorted sets for efficient leaderboard operations
+- Implement pagination for large leaderboards
+- Consider time-bounded leaderboards (daily, weekly, monthly)
+- Optimize for "around me" views (showing players near the current user's rank)
+- Cache user details separately to avoid querying Supabase for each leaderboard entry
+
+### Real-time Game State
+
+**Implementation Strategy**:
+```typescript
+// src/utils/multiplayerUtils.ts
+import { redis } from '@/lib/redis';
+import { nanoid } from 'nanoid';
+
+export async function createMatch(player1: string, player2: string) {
+  const matchId = nanoid();
+  const matchData = {
+    id: matchId,
+    players: [player1, player2],
+    scores: { [player1]: 0, [player2]: 0 },
+    startTime: Date.now(),
+    status: 'active'
+  };
+  
+  await redis.set(`match:${matchId}`, JSON.stringify(matchData), { ex: 3600 });
+  
+  // Add to player's active matches
+  await redis.sadd(`player:matches:${player1}`, matchId);
+  await redis.sadd(`player:matches:${player2}`, matchId);
+  
+  return matchId;
+}
+
+export async function updateMatchScore(matchId: string, playerId: string, score: number) {
+  const matchData = JSON.parse(await redis.get(`match:${matchId}`) as string);
+  if (!matchData || matchData.status !== 'active') return false;
+  
+  matchData.scores[playerId] = score;
+  await redis.set(`match:${matchId}`, JSON.stringify(matchData), { ex: 3600 });
+  
+  return true;
+}
+
+export async function endMatch(matchId: string) {
+  const matchData = JSON.parse(await redis.get(`match:${matchId}`) as string);
+  if (!matchData) return null;
+  
+  matchData.status = 'completed';
+  matchData.endTime = Date.now();
+  
+  // Determine winner
+  const [player1, player2] = matchData.players;
+  const player1Score = matchData.scores[player1];
+  const player2Score = matchData.scores[player2];
+  
+  matchData.winner = player1Score > player2Score ? player1 : 
+                    player2Score > player1Score ? player2 : 'draw';
+  
+  await redis.set(`match:${matchId}`, JSON.stringify(matchData), { ex: 3600 });
+  
+  // Remove from active matches sets
+  await redis.srem(`player:matches:${player1}`, matchId);
+  await redis.srem(`player:matches:${player2}`, matchId);
+  
+  // Store match result in history (we'll use Supabase for persistent storage)
+  // Future enhancement: Use Redis Stream to publish match result
+  
+  return matchData;
+}
+```
+
+**Best Practices**:
+- Balance data freshness with write frequency
+- Use Redis pub/sub for real-time game events
+- Design key patterns for easy access and cleanup
+- Consider Redis Streams for event logging (match events, etc.)
+- Implement reconnection logic with state recovery
+
+### Additional Optimizations
+
+1. **Connection Pooling**:
+   ```typescript
+   // src/lib/redis.ts
+   import { Redis } from '@upstash/redis';
+   
+   // Create a singleton instance
+   const redisClient = new Redis({
+     url: import.meta.env.VITE_UPSTASH_REDIS_URL,
+     token: import.meta.env.VITE_UPSTASH_REDIS_TOKEN,
+     automaticDeserialization: true,
+   });
+   
+   export { redisClient as redis };
+   ```
+
+2. **Batching with Redis Pipelining**:
+   ```typescript
+   async function batchUpdateScores(scores: Array<{userId: string, score: number}>) {
+     const pipeline = redis.pipeline();
+     
+     for (const { userId, score } of scores) {
+       pipeline.zadd('leaderboard:global', { score, member: userId });
+     }
+     
+     return pipeline.exec();
+   }
+   ```
+
+3. **Error Handling with Fallbacks**:
+   ```typescript
+   async function getGameState(userId: string) {
+     try {
+       // Try Redis first
+       const cachedState = await redis.get(`game_state:${userId}`);
+       if (cachedState) return JSON.parse(cachedState as string);
+       
+       // Fall back to Supabase
+       const { data } = await supabase
+         .from('game_states')
+         .select('*')
+         .eq('user_id', userId)
+         .single();
+         
+       return data;
+     } catch (error) {
+       console.error('Redis error, falling back to local storage', error);
+       // Last resort fallback
+       return {
+         coins: localStorage.getItem('coins') || 0,
+         clicks: localStorage.getItem('totalClicks') || 0
+       };
+     }
+   }
+   ```
+
+By implementing these strategies, the application will benefit from the performance advantages of Redis while maintaining data consistency with Supabase as my primary database. This hybrid approach will provide the real-time responsiveness needed for an engaging gaming experience while ensuring data persistence and integrity.

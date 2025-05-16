@@ -19,7 +19,6 @@ export default defineConfig({
     vue({
       template: {
         compilerOptions: {
-          isCustomElement: (tag:any) => ['appkit-button', 'appkit-network-button'].includes(tag),
         },
       },
     }),tailwindcss()

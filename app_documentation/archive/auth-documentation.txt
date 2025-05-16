@@ -1,0 +1,67 @@
+---
+Wallet-Based Authentication with Supabase (Edge Function Pattern)
+---
+
+# Overview
+This document describes the recommended, secure, and industry-standard approach for authenticating users via wallet (e.g., Solana) in a Supabase project with Row-Level Security (RLS) enabled. This pattern leverages a Supabase Edge Function to handle wallet signature verification, user registration/login, and JWT issuance for RLS-protected access.
+
+# Flow Summary
+1. **User connects wallet and signs a message** (handled by Reown/AppKit/SIWS on the frontend).
+2. **Frontend sends `{ walletAddress, signature, message }` to a Supabase Edge Function**.
+3. **Edge Function:**
+   - Verifies the signature using Solana cryptography.
+   - Checks if the wallet is already registered in Supabase Auth.
+   - If not, registers the wallet as a new user (using wallet address as a unique email, e.g., `wallet@wallet.yomama`).
+   - Issues a Supabase Auth JWT for the wallet.
+   - Returns the JWT to the frontend.
+4. **Frontend sets the session** with `supabase.auth.setSession({ access_token: JWT })`.
+5. **User is now authenticated** and can access RLS-protected tables (e.g., `profiles`, `user_game_state`).
+
+# Detailed Steps
+
+## 1. Wallet Connect & Signature (Frontend)
+- Use Reown/AppKit to connect the user's wallet and prompt them to sign a message (e.g., `Sign in to Yo Mama at <timestamp>`).
+- Obtain the wallet address and the signature.
+
+## 2. Send to Edge Function
+- POST `{ walletAddress, signature, message }` to the deployed Supabase Edge Function endpoint (e.g., `/functions/v1/wallet-auth`).
+
+## 3. Edge Function Logic
+- **Verify the signature** using Solana libraries (e.g., `tweetnacl`, `bs58`).
+- **Check if the user exists** in Supabase Auth (using the wallet address as a pseudo-email).
+- **If not, create the user** in Supabase Auth (registration step).
+- **Issue a JWT** for the user (using Supabase Admin API or magic link flow).
+- **Return the JWT** to the frontend.
+
+## 4. Set Supabase Session (Frontend)
+- Use the returned JWT to set the Supabase session:
+  ```typescript
+  await supabase.auth.setSession({ access_token: jwt, refresh_token: null });
+  ```
+- All subsequent Supabase queries will now be authenticated and RLS will allow access to the user's own data.
+
+## 5. Upsert Profile and Game State
+- Only after the session is set, upsert/select from `profiles` and other RLS-protected tables.
+
+# Security Notes
+- **Never upsert/select from RLS-protected tables before authentication.**
+- **Always verify the wallet signature on the backend/Edge Function.**
+- **Do not use the service role key on the frontend.**
+- **Do not disable RLS for convenience.**
+
+# Example Edge Function (TypeScript)
+See `supabase/functions/wallet-auth/index.ts` for a full implementation example.
+
+# Example Frontend Integration
+See `src/components/WalletConnection.vue` and `src/lib/auth.ts` for how to:
+- Connect wallet and sign message (Reown/AppKit)
+- Send signature to Edge Function
+- Set Supabase session with returned JWT
+- Upsert/select profile after authentication
+
+# References
+- [Supabase Docs: Auth with Custom JWT](https://supabase.com/docs/guides/auth/auth-jwt)
+- [Supabase Community: SIWS Example](https://github.com/supabase-community/supabase-siws)
+- [Reown/AppKit SIWS](https://github.com/reown-labs/appkit)
+
+---

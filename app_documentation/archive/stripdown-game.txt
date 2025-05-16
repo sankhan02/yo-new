@@ -1,0 +1,151 @@
+---
+
+# Technical Analysis: Game Features & Database Requirements
+
+## 0. Database Stack & Performance Considerations
+- **Persistent Storage:**
+  - Uses **Supabase (Postgres)** for all persistent data (users, game state, matches, referrals, etc.).
+- **Caching/Session Layer:**
+  - Uses **Redis** for low-latency, high-frequency data (e.g., click counters, session state, temporary game data).
+- **High-Frequency Actions (e.g., Clicking):**
+  - **Do NOT store critical state on the client.**
+  - **Recommended Approach:**
+    - Use Redis to increment per-user click counters in real time (e.g., `INCR user:{id}:clicks`).
+    - Periodically (e.g., every 30s or on session end), batch-write aggregated results to Supabase.
+    - Use Redis TTLs to auto-expire stale session data.
+    - Use Lua scripts or Redis transactions to ensure atomicity for multi-step updates.
+  - **Supabase Write Minimization:**
+    - Only write to Postgres when a session ends, a reward is triggered, or at regular intervals.
+    - Use triggers to update derived stats (e.g., leaderboards) on batch writes.
+
+---
+
+## 1. Admin Configuration
+- **Admin-Configurable Parameters:**
+  - Coin earnings per click, streak reward options, power-up multipliers, cooldowns, etc.
+- **Schema Example:**
+  ```sql
+  create table admin_game_config (
+    key text primary key,
+    value jsonb not null,
+    updated_at timestamptz default now(),
+    updated_by uuid references auth.users(id)
+  );
+  ```
+- **Access Control:**
+  - Enable RLS; only allow users with an `is_admin` flag (in a `user_roles` table or JWT claim) to update/insert/delete.
+  - All users can `SELECT` for client config.
+  - Example policy:
+    ```sql
+    create policy "Admins can modify config" on admin_game_config
+      for all using (auth.role() = 'admin');
+    create policy "All can read config" on admin_game_config
+      for select using (true);
+    ```
+
+---
+
+## 2. Database Table Schemas & Security
+- **User Profiles**
+  - `profiles` (extends `auth.users`): wallet_address (unique), display_name, avatar_url, created_at, updated_at
+- **Game State**
+  - `user_game_state`: user_id (FK), coins, total_clicks, last_click_time, cooldown_end_time, streak_days, last_login_date, power_ups (jsonb), offline_earnings (jsonb), updated_at
+- **PvP Matches**
+  - `pvp_matches`: id (uuid), type, status, bet, start_time, end_time, winner_id, created_at
+  - `pvp_match_players`: match_id, user_id, score, is_opponent
+- **Referrals**
+  - `referral_codes`: id, user_id, code, created_at
+  - `referrals`: id, referrer_id, referee_id, joined_at, is_active, reward_claimed, reward_amount
+- **Streak Rewards & Power-Ups**
+  - `streak_rewards`: id, user_id, streak_days, type, value, description, claimed
+  - `user_powerups`: id, user_id, powerup_type, active, end_time, multiplier, cooldown
+- **Audit Logs**
+  - `user_action_logs`: id, user_id, action_type, details (jsonb), created_at
+- **Security & RLS**
+  - Enable RLS on all tables.
+  - Users can only access their own private data (e.g., `user_game_state`, `referrals` where they are referrer/referee).
+  - Public data (e.g., leaderboards, public profiles) is accessible to all.
+  - Example RLS for `user_game_state`:
+    ```sql
+    create policy "Users can view their own game state" on user_game_state
+      for select using (user_id = auth.uid());
+    create policy "Users can update their own game state" on user_game_state
+      for update using (user_id = auth.uid());
+    ```
+- **Triggers & Procedures:**
+  - `BEFORE UPDATE` triggers to update `updated_at`.
+  - Triggers for reward distribution (e.g., when a referral becomes active).
+  - Anti-cheat: Use Redis for rate-limiting; optionally log suspicious actions in `user_action_logs`.
+
+---
+
+## 3. User Data Access & Validation
+- **Private Data:**
+  - Only accessible by the user (e.g., game state, rewards, referral stats).
+- **Public Data:**
+  - Leaderboards, public profiles, achievements, badges.
+- **Validation:**
+  - All sensitive operations (e.g., coin rewards, match results) must be validated server-side.
+  - Use Supabase Functions or triggers for critical logic (e.g., reward calculation, anti-cheat checks).
+
+---
+
+## 4. Multiplayer Game Logic & Schema
+- **Match Invitations:**
+  - `match_invitations`: id, inviter_id, target_player_id, match_type, proposed_bet, status, counter_bet, created_at, expires_at
+- **Notification System:**
+  - Use a `notifications` table: id, user_id, type, payload (jsonb), read, created_at
+- **User Responses:**
+  - Status field in `match_invitations` tracks accept/reject/counter.
+  - On accept, create a `pvp_matches` record and link both users.
+- **Schema Example:**
+  ```sql
+  create table match_invitations (
+    id uuid primary key default gen_random_uuid(),
+    inviter_id uuid references profiles(id),
+    target_player_id uuid references profiles(id),
+    match_type text,
+    proposed_bet bigint,
+    status text check (status in ('pending','accepted','rejected','countered','expired')),
+    counter_bet bigint,
+    created_at timestamptz default now(),
+    expires_at timestamptz
+  );
+  ```
+- **Relationships:**
+  - `pvp_match_players` links users to matches.
+  - `notifications` can be used for real-time updates.
+
+---
+
+## 5. Additional Database Requirements
+- **Referral System:**
+  - See above; ensure unique codes, track referee/referrer, reward logic.
+- **Power-Ups & Streaks:**
+  - Track per-user power-up activations, streak progress, and reward claims.
+- **Audit Logs:**
+  - Log all sensitive or security-relevant actions (e.g., suspicious clicks, match results, admin changes).
+- **User Action Tracking:**
+  - `user_action_logs` for analytics, anti-cheat, and support.
+- **Other Features:**
+  - Support for achievements, badges, and public profile data.
+  - Optionally, a `game_events` table for tracking in-game events (for analytics or debugging).
+
+---
+
+# Example Table Relationships (ERD)
+- `profiles` (1) --- (1) `user_game_state`
+- `profiles` (1) --- (M) `pvp_match_players` (M) --- (1) `pvp_matches`
+- `profiles` (1) --- (1) `referral_codes`
+- `profiles` (1) --- (M) `referrals` (M) --- (1) `profiles` (as referee)
+- `profiles` (1) --- (M) `streak_rewards`
+- `profiles` (1) --- (M) `user_powerups`
+
+---
+
+# Summary
+- The database must be highly normalized, secure (RLS everywhere), and support both public and private data access.
+- Redis is essential for high-frequency, low-latency operations; Supabase/Postgres is the source of truth.
+- All sensitive logic (rewards, anti-cheat, match results) must be enforced server-side.
+- Admin configuration should be flexible and tightly access-controlled.
+- The schema supports extensibility for future features (e.g., achievements, analytics, new game modes).
